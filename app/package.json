@@ -1,0 +1,32 @@
+{
+  "name": "meet-ayio-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Meet Ayio: app de videoconferencia (abertura, login por e-mail, reunioes, agendamento, gravacoes e atas)",
+  "scripts": {
+    "dev": "next dev -p 3100",
+    "build": "next build",
+    "start": "next start",
+    "postinstall": "prisma generate",
+    "migrate": "prisma migrate deploy",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "next": "16.4.2",
+    "prisma": "^6.19.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "autoprefixer": "10.4.20",
+    "postcss": "8.4.47",
+    "tailwindcss": "3.4.14"
+  },
+  "overrides": {
+    "deepmerge-ts": "^8.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,76 @@
+// Banco do app Meet Ayio (separado do banco da API: database "meetayio_app").
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String    @id @default(uuid())
+  email     String    @unique @db.VarChar(254)
+  name      String?   @db.VarChar(120)
+  createdAt DateTime  @default(now()) @map("created_at")
+  sessions  Session[]
+  meetings  Meeting[]
+
+  @@map("users")
+}
+
+// Link mágico de login: só o hash do token fica salvo; vale 15 min e uma vez.
+model LoginToken {
+  id        String    @id @default(uuid())
+  tokenHash String    @unique @map("token_hash") @db.Char(64)
+  email     String    @db.VarChar(254)
+  next      String?   @db.VarChar(300) // para onde voltar depois de entrar
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([email, createdAt])
+  @@map("login_tokens")
+}
+
+// Sessão do navegador (cookie httpOnly com o token; aqui só o hash).
+model Session {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique @map("token_hash") @db.Char(64)
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Meeting {
+  id          String    @id @default(uuid())
+  code        String    @unique @db.VarChar(20) // abc-defg-hij; sala no Jitsi = "m-" + code
+  ownerId     String    @map("owner_id")
+  owner       User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  title       String    @db.VarChar(120)
+  startsAt    DateTime? @map("starts_at") // null = reunião instantânea
+  durationMin Int?      @map("duration_min")
+  waitingRoom Boolean   @default(true) @map("waiting_room")
+  cancelledAt DateTime? @map("cancelled_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  invites     Invite[]
+
+  @@index([ownerId, startsAt])
+  @@map("meetings")
+}
+
+model Invite {
+  id        String   @id @default(uuid())
+  meetingId String   @map("meeting_id")
+  meeting   Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  email     String   @db.VarChar(254)
+  sentAt    DateTime? @map("sent_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([meetingId, email])
+  @@map("invites")
+}

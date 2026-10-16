@@ -5,3 +5,4 @@ node_modules/
 .DS_Store
 api/data/
 infra/jibri/recordings/
+.next/

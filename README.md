@@ -8,6 +8,7 @@ produtos Ayio. Primeiro cliente: SeuCartório (sai do 8x8 JaaS).
 | `infra/` | stack Jitsi: web, prosody, jicofo, jvb, coturn (TURN sobre TCP) |
 | `infra/jibri/` | gravação: Jibri (VPS) + script que envia o mp4 para a API |
 | `api/` | meet-ayio-api (Node/Express + Prisma/MySQL): clientes, salas, JWT, gravações, webhooks, uso |
+| `app/` | app web para qualquer pessoa (Next.js): abertura, login por e-mail, reuniões, agendamento, gravações e atas — ver `app/README.md` |
 | `integracoes/seucartorio/` | troca JaaS → Meet Ayio e gravações, prontas para aplicar no SeuCartório |
 | `docs/` | plano e decisões |
 
