@@ -1,30 +1,30 @@
 // Configuração lida do ambiente (Railway Variables em produção, .env local).
 
-function lerApiKeys(raw) {
-  // Formato: "seucartorio:chave1,botayio:chave2"  → Map(chave → cliente)
-  const mapa = new Map();
-  for (const par of (raw || '').split(',').map((s) => s.trim()).filter(Boolean)) {
-    const i = par.indexOf(':');
-    if (i <= 0) continue;
-    mapa.set(par.slice(i + 1), par.slice(0, i));
-  }
-  return mapa;
+// Seed do store em memória (dev/testes): "slug:chave:prefixo,slug2:chave2:prefixo2"
+function lerSeedClientes(raw) {
+  return (raw || '').split(',').map((s) => s.trim()).filter(Boolean).map((item) => {
+    const [slug, chave, prefixo] = item.split(':');
+    return slug && chave ? { slug, apiKey: chave, roomPrefix: prefixo || `${slug}-` } : null;
+  }).filter(Boolean);
 }
 
 function carregarConfig(env = process.env) {
+  const jitsiDomain = (env.JITSI_DOMAIN || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '');
   return {
     port: Number(env.PORT) || 3000,
+    databaseUrl: env.DATABASE_URL || '',
+    adminToken: env.ADMIN_TOKEN || '',
     // Precisam bater com JWT_APP_ID / JWT_APP_SECRET / JWT_ACCEPTED_* do prosody.
     jwtAppId: env.JWT_APP_ID || 'meet-ayio',
     jwtAppSecret: env.JWT_APP_SECRET || '',
     jwtAudience: env.JWT_AUDIENCE || env.JWT_APP_ID || 'meet-ayio',
     // XMPP_DOMAIN do stack Jitsi (o template usa meet.jitsi).
     jitsiXmppDomain: env.JITSI_XMPP_DOMAIN || 'meet.jitsi',
-    // URL pública do serviço web do Jitsi, ex.: https://meet.ayio.com.br
-    jitsiPublicUrl: (env.JITSI_PUBLIC_URL || '').replace(/\/$/, ''),
-    tokenTtlSeconds: Number(env.TOKEN_TTL_SECONDS) || 2 * 60 * 60,
-    apiKeys: lerApiKeys(env.MEET_AYIO_API_KEYS),
+    // Host público do serviço web do Jitsi, ex.: meet.ayio.com.br
+    jitsiDomain,
+    tokenTtlSeconds: Number(env.TOKEN_TTL_SECONDS) || 6 * 60 * 60,
+    seedClientes: lerSeedClientes(env.MEET_AYIO_SEED_CLIENTS),
   };
 }
 
-module.exports = { carregarConfig, lerApiKeys };
+module.exports = { carregarConfig, lerSeedClientes };

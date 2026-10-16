@@ -1,0 +1,51 @@
+// Banco do Meet Ayio (MySQL no Railway).
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// Cliente da API (SeuCartório, BotAyio...). Só o hash da API key fica salvo.
+model Client {
+  id         String       @id @default(uuid())
+  slug       String       @unique
+  name       String
+  roomPrefix String       @unique @map("room_prefix")
+  apiKeyHash String       @unique @map("api_key_hash") @db.Char(64)
+  active     Boolean      @default(true)
+  webhookUrl String?      @map("webhook_url") @db.VarChar(500)
+  createdAt  DateTime     @default(now()) @map("created_at")
+  sessions   Session[]
+  tokens     TokenIssue[]
+
+  @@map("clients")
+}
+
+// Sala. Criada por POST /sessions ou automaticamente no primeiro token.
+model Session {
+  id        String   @id @default(uuid())
+  roomName  String   @unique @map("room_name") @db.VarChar(64)
+  clientId  String   @map("client_id")
+  client    Client   @relation(fields: [clientId], references: [id])
+  title     String?  @db.VarChar(120)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([clientId, createdAt])
+  @@map("sessions")
+}
+
+// Cada token emitido (base do /usage).
+model TokenIssue {
+  id        BigInt   @id @default(autoincrement())
+  clientId  String   @map("client_id")
+  client    Client   @relation(fields: [clientId], references: [id])
+  roomName  String   @map("room_name") @db.VarChar(64)
+  moderator Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([clientId, createdAt])
+  @@map("token_issues")
+}

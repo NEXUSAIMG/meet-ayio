@@ -9,10 +9,6 @@ quando o limite estoura (persistiu mesmo após upgrade; incidente aberto com a
 8x8). Meet Ayio = infraestrutura Jitsi própria, sem limite de MAU nem custo
 por minuto de gravação.
 
-O JaaS É um Jitsi hospedado. O `gerarToken` do `video.routes.js` (JWT com
-`context.user`, `context.features`, `room`) é o mesmo modelo do Jitsi
-self-hosted com `AUTH_TYPE=jwt`. A troca é principalmente domínio/chave.
-
 ## Mídia no Railway (revisão 15/10)
 
 O "TCP harvester" do JVB não serve: o único harvester ICE do JVB atual é UDP,
@@ -33,18 +29,23 @@ HS256 basta no v1 (só a meet-ayio-api assina).
 ## Fases
 1. ~~Validar UDP~~ — feito; caminho é TURN/TCP com coturn.
 2. **Deploy do stack (`infra/`) no Railway** → moderador, teste com auth
-   interna; depois JWT e domínio. ← atual
+   interna; depois JWT e domínio. ← **aguardando ok do Marcio (gera cobrança)**
 3. Teste real com 3+ pessoas (Davi, Karina; wifi, 4G, rede do cartório);
    medir banda do coturn.
-4. API (`api/`): v0.1 pronta (salas em memória + token); falta banco,
-   cadastro de clientes/API keys, `/usage`.
-5. SeuCartório → Meet Ayio (`video.routes.js`).
+4. ~~API~~ — **feito (15/10, v0.2)**: Prisma/MySQL, clientes com API key
+   (hash), prefixo de sala por cliente, `POST /tokens`, admin, `/usage`.
+   Testada com MySQL 8.4 real e smoke ponta a ponta. Falta: deploy.
+5. SeuCartório → Meet Ayio — **preparado** em `integracoes/seucartorio/`
+   (provedor atrás de `VIDEO_PROVIDER=jaas|meetayio`, volta instantânea pro
+   8x8). Aplicar depois da fase 3.
 6. Jibri — exige privilégios elevados; alto risco no Railway → validar cedo;
    plano B: VPS pequena.
 7. Webhook de gravação + ata (`plano-video-gravacao-ata-lgpd-14-10.md`).
 
 ## Decisões em aberto
 - Domínio (ex.: `meet.ayio.com.br`).
-- Quotas por cliente no v1 ou só controle de acesso.
-- Convidados: token sempre ou entrada livre com lobby.
+- Quotas por cliente no v1 ou só controle de acesso (hoje: só acesso + `/usage`).
+- Convidados: token sempre ou entrada livre com lobby. (O SeuCartório já emite
+  token para convidado pelo link de convite, então `ENABLE_GUESTS=0` funciona.)
 - Licença do template upstream (sem LICENSE no repo).
+- GitHub: repo `marciogoes/meet-ayio` ainda não criado (código só local).

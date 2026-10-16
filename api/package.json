@@ -1,18 +1,25 @@
 {
   "name": "meet-ayio-api",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "API do Meet Ayio: emite JWT para o Jitsi self-hosted e gerencia salas",
+  "description": "API do Meet Ayio: emite JWT para o Jitsi self-hosted, cadastra clientes e mede uso",
   "main": "src/server.js",
   "type": "commonjs",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
+    "postinstall": "prisma generate",
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node --test test/*.test.js"
+    "migrate": "prisma migrate deploy",
+    "test": "node --test test/*.test.js",
+    "smoke": "node scripts/smoke.js"
   },
   "dependencies": {
+    "@prisma/client": "^6.19.3",
     "express": "^4.21.2",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "prisma": "^6.19.3"
   }
 }
