@@ -32,8 +32,10 @@ function valor(existente, nome, novo) {
 // 1) Segredos (reaproveita os que ja existem)
 const apiEnvPath = path.join(raiz, 'api', '.env');
 const jibriEnvPath = path.join(raiz, 'infra', 'jibri', '.env');
+const resumoPath = path.join(raiz, '.env');
 const apiAtual = lerEnv(apiEnvPath);
 const jibriAtual = lerEnv(jibriEnvPath);
+const resumoAtual = lerEnv(resumoPath);
 
 const s = {
   JWT_APP_SECRET: valor(apiAtual, 'JWT_APP_SECRET', gerar(48)),
@@ -42,6 +44,10 @@ const s = {
   FILES_SECRET: valor(apiAtual, 'FILES_SECRET', gerar(32)),
   JIBRI_XMPP_PASSWORD: valor(jibriAtual, 'JIBRI_XMPP_PASSWORD', gerar(24)),
   JIBRI_RECORDER_PASSWORD: valor(jibriAtual, 'JIBRI_RECORDER_PASSWORD', gerar(24)),
+  // so do stack Jitsi (prosody/jicofo/jvb/coturn)
+  JICOFO_AUTH_PASSWORD: valor(resumoAtual, 'JICOFO_AUTH_PASSWORD', gerar(24)),
+  JVB_AUTH_PASSWORD: valor(resumoAtual, 'JVB_AUTH_PASSWORD', gerar(24)),
+  TURN_SECRET: valor(resumoAtual, 'TURN_SECRET', gerar(32)),
 };
 
 // 2) Preenche um .env a partir do .example, mantendo valores ja preenchidos
@@ -73,26 +79,26 @@ escrever(path.join(raiz, 'infra', 'jibri', '.env.example'), jibriEnvPath, {
 
 // 3) Resumo para o Railway (o que precisa ser IGUAL entre servicos)
 const resumo = `# Segredos do Meet Ayio - gerado por scripts/gerar-segredos.js
-# NAO commitar. Copiar cada bloco para as variaveis do servico no Railway.
+# NAO commitar. No Railway, colar como "Shared Variables" do projeto e
+# referenciar nos servicos com \${{shared.NOME}} (ver infra/README.md).
+
+# --- compartilhados (API + stack Jitsi) ---
+JWT_APP_SECRET=${s.JWT_APP_SECRET}
+
+# --- stack Jitsi ---
+JICOFO_AUTH_PASSWORD=${s.JICOFO_AUTH_PASSWORD}
+JVB_AUTH_PASSWORD=${s.JVB_AUTH_PASSWORD}
+TURN_SECRET=${s.TURN_SECRET}
+JIBRI_XMPP_PASSWORD=${s.JIBRI_XMPP_PASSWORD}
+JIBRI_RECORDER_PASSWORD=${s.JIBRI_RECORDER_PASSWORD}
 
 # --- meet-ayio-api ---
 ADMIN_TOKEN=${s.ADMIN_TOKEN}
-JWT_APP_SECRET=${s.JWT_APP_SECRET}
 RECORDER_SECRET=${s.RECORDER_SECRET}
 FILES_SECRET=${s.FILES_SECRET}
-
-# --- prosody, jicofo e web (JWT igual ao da API) ---
-JWT_APP_ID=meet-ayio
-JWT_APP_SECRET=${s.JWT_APP_SECRET}
-JWT_ACCEPTED_ISSUERS=meet-ayio
-JWT_ACCEPTED_AUDIENCES=meet-ayio
-
-# --- prosody (gravacao) e Jibri na VPS ---
-JIBRI_XMPP_PASSWORD=${s.JIBRI_XMPP_PASSWORD}
-JIBRI_RECORDER_PASSWORD=${s.JIBRI_RECORDER_PASSWORD}
 
 # --- SeuCartorio ---
 # MEET_AYIO_API_KEY= (criar no painel /admin depois do deploy)
 `;
-fs.writeFileSync(path.join(raiz, '.env'), resumo, { mode: 0o600 });
+fs.writeFileSync(resumoPath, resumo, { mode: 0o600 });
 console.log('ok .env (resumo para o Railway)');

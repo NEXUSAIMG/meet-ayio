@@ -1,61 +1,134 @@
 # infra — stack Jitsi do Meet Ayio (Railway)
 
-Baseado no template **lNamelessl/jitsi-railway-template** (commit `11ee427`),
-copiado para cá para versionarmos as mudanças (JWT, domínio, Jibri).
-README original em `UPSTREAM-README.md`.
-
-> ⚠️ O repo upstream não tem arquivo de licença. Antes de abrir este repo ou
-> vender o produto, pedir licença ao autor ou reescrever os Dockerfiles.
+Escrito do zero para o Meet Ayio (16/10/2026) sobre as imagens oficiais do
+`docker-jitsi-meet` (Apache 2.0), tag `stable-11248`. Não depende mais do
+template lNamelessl (que não tinha licença); dele ficou só a ideia, que é
+pública: TURN sobre TCP por um TCP proxy do Railway.
 
 ## Serviços
 
-| Serviço | Origem | RAM | Exposição |
+| Serviço Railway | Root Directory | RAM | Exposição |
 |---|---|---|---|
-| web | imagem `ghcr.io/jitsi/web:stable-11248` | 512 MB | domínio público Railway |
-| prosody | `docker/prosody/Dockerfile` | 512 MB | rede privada |
-| jicofo | `docker/jicofo/Dockerfile` | 512 MB | rede privada |
-| jvb | `docker/jvb/Dockerfile` | **2 GB** (não reduzir) | rede privada |
-| coturn | `docker/coturn/Dockerfile` | 256 MB | **TCP proxy → 3478** |
+| `web` | `infra/servicos/web` | 512 MB | domínio público (porta 8000) |
+| `prosody` | `infra/servicos/prosody` | 512 MB | rede privada (+ TCP proxy 5222 só se houver Jibri) |
+| `jicofo` | `infra/servicos/jicofo` | 512 MB | rede privada |
+| `jvb` | `infra/servicos/jvb` | **2 GB** (não reduzir) | rede privada (10000/udp) |
+| `coturn` | `infra/servicos/coturn` | 256 MB | **TCP proxy → 3478** |
 
-Mídia: navegador → TURN/TCP (`*.proxy.rlwy.net`) → coturn → UDP privado → jvb.
+Os nomes dos serviços importam: as variáveis abaixo se referenciam por eles
+(`jvb.railway.internal`, `${{prosody.RAILWAY_PRIVATE_DOMAIN}}` etc.).
 
-## Deploy (fase 2)
+**Mídia:** navegador → TURN/TCP (`*.proxy.rlwy.net:<porta>`) → coturn → UDP
+pela rede privada → jvb. O Railway não tem UDP público e o jvb só aceita UDP,
+então o coturn é o único caminho de mídia, inclusive em chamadas 1:1.
 
-1. Fazer o deploy pelo template (`railway.com/deploy/jitsi-meet--jitsi-template`),
-   que cria os 5 serviços com todas as variáveis e segredos já ligados.
-2. Em cada serviço com Dockerfile (prosody, jicofo, jvb, coturn), trocar a
-   origem para **este repo**: Settings → Source → `marciogoes/meet-ayio`,
-   Root Directory = `infra/docker/<serviço>`.
-3. Criar o moderador (shell do prosody):
-   `prosodyctl --config /run/prosody/config/prosody.cfg.lua shell user create admin@auth.meet.jitsi 'SENHA'`
-4. Testar com 3+ pessoas (wifi, 4G, rede do cartório).
+**Nenhum serviço usa volume.** Na `stable-11248` o prosody recria a cada boot
+os usuários internos (focus, jvb, jibri, recorder) a partir das senhas, e com
+JWT não existe conta de usuário final para guardar. Sem volume também não há o
+problema de permissão de volume do Railway (que o template resolvia com `sed`
+nos scripts da imagem).
 
-## Trocar para JWT (depois do teste com auth interna)
+## O que cada Dockerfile fixa
 
-Mesmos valores em **prosody, web e jicofo**:
+- **prosody:** JWT (`AUTH_TYPE=jwt`, `JWT_APP_ID/ISSUERS/AUDIENCES=meet-ayio`,
+  sem convidado sem token), módulo `token_affiliation` (moderador vem do
+  token: `context.user.moderator`/`affiliation`), TURN por TCP.
+- **jicofo:** `ENABLE_AUTO_OWNER=0` (quem entra primeiro não vira moderador),
+  brewery do jvb e do Jibri, heap 384 MB.
+- **jvb:** STUN desligado, candidatos privados ligados, heap 1792 MB.
+- **web:** HTTP na 8000 (TLS fica na borda do Railway), interface em
+  português, sem página inicial, sem gravação local no navegador, sem
+  links para os apps móveis, sem requisições a terceiros (`custom-config.js`).
+- **coturn:** Alpine + coturn, `iniciar.sh` monta o `turnserver.conf` das
+  variáveis. Só repassa mídia para o jvb (e para ele mesmo, nas chamadas
+  1:1); qualquer outro destino é negado, para não virar proxy aberto. Se o
+  IP privado do jvb mudar (redeploy do jvb), o coturn percebe em até 1 min
+  e reinicia sozinho.
 
+## Variáveis no Railway
+
+Rodar `node scripts/gerar-segredos.js` na raiz do repo. O `.env` da raiz (fora
+do git) traz os valores para colar em **Project Settings → Shared Variables**.
+Depois, em cada serviço:
+
+**prosody**
 ```
-ENABLE_AUTH=1
-AUTH_TYPE=jwt
-JWT_APP_ID=meet-ayio
-JWT_APP_SECRET=<segredo longo — o MESMO da meet-ayio-api>
-JWT_ACCEPTED_ISSUERS=meet-ayio
-JWT_ACCEPTED_AUDIENCES=meet-ayio
-ENABLE_GUESTS=0        # 1 = convidado entra sem token (decisão em aberto)
+JWT_APP_SECRET=${{shared.JWT_APP_SECRET}}
+JICOFO_AUTH_PASSWORD=${{shared.JICOFO_AUTH_PASSWORD}}
+JVB_AUTH_PASSWORD=${{shared.JVB_AUTH_PASSWORD}}
+PUBLIC_URL=https://${{web.RAILWAY_PUBLIC_DOMAIN}}
+TURN_HOST=${{coturn.RAILWAY_TCP_PROXY_DOMAIN}}
+TURN_PORT=${{coturn.RAILWAY_TCP_PROXY_PORT}}
+TURN_CREDENTIALS=${{shared.TURN_SECRET}}
+# gravação (fase 6):
+ENABLE_RECORDING=1
+JIBRI_XMPP_PASSWORD=${{shared.JIBRI_XMPP_PASSWORD}}
+JIBRI_RECORDER_PASSWORD=${{shared.JIBRI_RECORDER_PASSWORD}}
 ```
 
-O segredo pode ser uma variável compartilhada do projeto no Railway e
-referenciada nos três serviços e na API. Conferir depois da troca se o
-moderador vindo do token (`context.user.moderator`) é respeitado; se não,
-ativar o módulo de afiliação por token no prosody.
+**jicofo**
+```
+XMPP_SERVER=${{prosody.RAILWAY_PRIVATE_DOMAIN}}
+JICOFO_AUTH_PASSWORD=${{shared.JICOFO_AUTH_PASSWORD}}
+ENABLE_RECORDING=1
+```
 
-## Troubleshooting
+**jvb**
+```
+XMPP_SERVER=${{prosody.RAILWAY_PRIVATE_DOMAIN}}
+JVB_AUTH_PASSWORD=${{shared.JVB_AUTH_PASSWORD}}
+```
 
-Ver a seção Troubleshooting do `UPSTREAM-README.md` (OOM do jvb, senha XMPP
-divergente, proxy TCP do coturn ausente).
+**web**
+```
+PORT=8000
+PUBLIC_URL=https://${{RAILWAY_PUBLIC_DOMAIN}}
+XMPP_BOSH_URL_BASE=http://${{prosody.RAILWAY_PRIVATE_DOMAIN}}:5280
+ENABLE_RECORDING=1
+```
+
+**coturn**
+```
+TURN_SECRET=${{shared.TURN_SECRET}}
+JVB_HOST=${{jvb.RAILWAY_PRIVATE_DOMAIN}}
+```
+E em Settings → Networking do coturn: **TCP Proxy → porta 3478**.
+
+**meet-ayio-api** (serviço da pasta `api/`, ver `api/README` e `.env.example`)
+```
+JWT_APP_SECRET=${{shared.JWT_APP_SECRET}}
+JITSI_DOMAIN=${{web.RAILWAY_PUBLIC_DOMAIN}}
+ADMIN_TOKEN, RECORDER_SECRET, FILES_SECRET  (do .env da raiz)
+DATABASE_URL=${{MySQL.MYSQL_URL}}
+```
+
+Com domínio próprio (ex.: `meet.ayio.com.br`), trocar `PUBLIC_URL` do web e
+do prosody e o `JITSI_DOMAIN` da API.
+
+## Deploy
+
+1. Criar o projeto no Railway, os 5 serviços apontando para este repo (Root
+   Directory da tabela) e o MySQL + o serviço da API.
+2. Variáveis acima; TCP proxy do coturn.
+3. Conferir nos logs: prosody "Prosody is ready", jicofo e jvb conectados,
+   coturn com "destinos permitidos" mostrando o IP do jvb.
+4. Teste do caminho de mídia: `TURN_PROXY=<host:porta do proxy> TURN_SECRET=...
+   infra/scripts/teste-turn.sh`.
+5. Teste real com 3+ pessoas (wifi, 4G, rede do cartório), com tokens da API.
+
+## Problemas comuns
+
+- **Sem áudio/vídeo com 3+ pessoas:** coturn fora do ar ou sem TCP proxy;
+  `TURN_HOST/TURN_PORT` do prosody precisam ser referências ao coturn (a porta
+  do proxy muda), não valores fixos.
+- **jvb reiniciando:** falta de memória; manter 2 GB e `VIDEOBRIDGE_MAX_MEMORY`
+  abaixo disso.
+- **jicofo/jvb não conectam:** senha diferente entre prosody e jicofo/jvb
+  (usar sempre a variável compartilhada).
+- **"Você não tem permissão" ao entrar:** token com `aud`/`iss` diferente de
+  `meet-ayio`, `sub` diferente de `meet.jitsi` ou segredo diferente do prosody.
 
 ## Gravação (Jibri)
 
-Ver `jibri/README.md`: ligar `ENABLE_RECORDING=1` e as credenciais do Jibri
-em prosody/jicofo/web, abrir um TCP proxy para o 5222 do prosody e subir o
-Jibri numa VPS com o `docker-compose.yml` desta pasta.
+Ver `jibri/README.md`: roda numa VPS (precisa de `/dev/shm` de 2 GB) e fala
+com o prosody por um TCP proxy na porta 5222.
