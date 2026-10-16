@@ -1,6 +1,5 @@
 /**
  * Gravacoes de videoconferencia vindas do Meet Ayio.
- * Copiar para SeuCartorio/backend/src/routes/videoGravacao.routes.js
  *
  * Montagem no server.js (ANTES do express.json global, por causa do corpo cru):
  *   app.use('/api/webhooks/meet-ayio', require('./routes/videoGravacao.routes').webhook);
@@ -103,8 +102,13 @@ webhook.post('/', express.raw({ type: 'application/json', limit: '2mb' }), async
 });
 
 // ---------- Painel (logado; mesma regra de quem gerencia a sessao) ----------
+// Sem router.use(auth): este router e montado em /api/video-sessions ANTES do
+// video.routes, entao um use() global exigiria login ate no /convite publico.
 const gravacoes = express.Router();
-gravacoes.use(authMiddleware);
+const logado = [authMiddleware, clienteOnly];
+
+// Diz ao painel se ha gravacao/ata (so com o Meet Ayio).
+gravacoes.get('/gravacoes/recursos', authMiddleware, (req, res) => res.json({ gravacao: video.PROVEDOR === 'meetayio' }));
 
 const podeGerenciar = (req, sessao) =>
   req.userRole === 'SUPERADMIN' ||
@@ -121,7 +125,7 @@ async function gravacaoComPermissao(req, res) {
 }
 
 // Lista as gravacoes de uma sessao.
-gravacoes.get('/:id/gravacoes', clienteOnly, async (req, res) => {
+gravacoes.get('/:id/gravacoes', ...logado, async (req, res) => {
   try {
     const sessao = await prisma.videoSession.findUnique({ where: { id: String(req.params.id) } });
     if (!sessao || !podeGerenciar(req, sessao)) return res.status(404).json({ erro: 'Sessão não encontrada' });
@@ -134,7 +138,7 @@ gravacoes.get('/:id/gravacoes', clienteOnly, async (req, res) => {
 });
 
 // Link de download (vale 15 min; gerado na hora pelo Meet Ayio).
-gravacoes.get('/gravacoes/:gravacaoId/download', clienteOnly, async (req, res) => {
+gravacoes.get('/gravacoes/:gravacaoId/download', ...logado, async (req, res) => {
   try {
     const g = await gravacaoComPermissao(req, res);
     if (!g) return;
@@ -148,14 +152,14 @@ gravacoes.get('/gravacoes/:gravacaoId/download', clienteOnly, async (req, res) =
 });
 
 // Rascunho de ata da gravacao.
-gravacoes.get('/gravacoes/:gravacaoId/ata', clienteOnly, async (req, res) => {
+gravacoes.get('/gravacoes/:gravacaoId/ata', ...logado, async (req, res) => {
   const g = await gravacaoComPermissao(req, res);
   if (!g) return;
   return res.json({ status: g.ataStatus || 'NAO_SOLICITADA', ata: g.ata, erro: g.ataErro, atualizadaEm: g.ataAtualizadaEm });
 });
 
 // Pede transcricao + ata (quando o automatico esta desligado ou a anterior falhou).
-gravacoes.post('/gravacoes/:gravacaoId/ata/solicitar', clienteOnly, async (req, res) => {
+gravacoes.post('/gravacoes/:gravacaoId/ata/solicitar', ...logado, async (req, res) => {
   try {
     const g = await gravacaoComPermissao(req, res);
     if (!g) return;
@@ -171,7 +175,7 @@ gravacoes.post('/gravacoes/:gravacaoId/ata/solicitar', clienteOnly, async (req, 
 });
 
 // Refaz a ata com a LISTA DE PRESENCA real (VideoParticipante) e o titulo da sessao.
-gravacoes.post('/gravacoes/:gravacaoId/ata/refazer', clienteOnly, async (req, res) => {
+gravacoes.post('/gravacoes/:gravacaoId/ata/refazer', ...logado, async (req, res) => {
   try {
     const g = await gravacaoComPermissao(req, res);
     if (!g) return;
@@ -194,7 +198,7 @@ gravacoes.post('/gravacoes/:gravacaoId/ata/refazer', clienteOnly, async (req, re
 });
 
 // Exclusao antecipada (pedido do titular).
-gravacoes.delete('/gravacoes/:gravacaoId', clienteOnly, async (req, res) => {
+gravacoes.delete('/gravacoes/:gravacaoId', ...logado, async (req, res) => {
   try {
     const g = await gravacaoComPermissao(req, res);
     if (!g) return;

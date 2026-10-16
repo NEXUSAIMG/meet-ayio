@@ -1,8 +1,25 @@
 # SeuCartório → Meet Ayio (fase 5)
 
-Preparado em 15/10/2026 a partir do código atual do SeuCartório
-(`backend/src/routes/video.routes.js` @ `d81b91e`). **Nada foi alterado no
-repo do SeuCartório ainda**; aplicar quando o Meet Ayio estiver no ar.
+> **Aplicado em 16/10/2026 no branch `feat/meet-ayio` do SeuCartório** (local,
+> sem push), num worktree separado em `C:\Users\marci\projetos\seucartorio-meet-ayio`
+> — a pasta de trabalho do OneDrive não foi tocada. 4 commits sobre `d81b91e`:
+>
+> | Commit | O quê |
+> |---|---|
+> | `bcb6049` | provedor JaaS/Meet Ayio + rotas de gravação/ata + model + migration + 12 testes |
+> | `27946ea` | fix: quem gerencia a sessão também é moderador (lobby/gravação do atendente) + 4 testes |
+> | `76cffc0` | frontend: sala no domínio do provedor + painel "Gravações e ata" |
+> | `f87ae9e` | `.env.example` |
+>
+> Padrão continua `VIDEO_PROVIDER=jaas`: mergear não muda nada em produção.
+> Para usar: `node aplicar-migration-video-gravacoes.js` no banco e as variáveis
+> do passo 4. Suíte do backend: os testes novos passam; as 22 falhas restantes
+> já existem no `main`. `next build` ok.
+>
+> Os passos abaixo descrevem o que foi feito (útil para revisar o branch).
+
+Preparado em 15/10/2026 a partir do código do SeuCartório
+(`backend/src/routes/video.routes.js` @ `d81b91e`).
 
 ## Por que é pequeno
 

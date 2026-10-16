@@ -1,6 +1,5 @@
 /**
  * Provedor de video do SeuCartorio: JaaS (8x8) ou Meet Ayio.
- * Copiar para SeuCartorio/backend/src/services/videoProvider.service.js
  *
  * VIDEO_PROVIDER=jaas (padrao) | meetayio
  *   jaas:     JAAS_APP_ID, JAAS_KID, JAAS_PRIVATE_KEY (como hoje)
