@@ -80,16 +80,31 @@ async function gerarSala({ user, room, moderator }) {
 }
 
 // ---------- Gravacoes (so Meet Ayio) ----------
-async function chamarMeetAyio(metodo, caminho) {
+async function chamarMeetAyio(metodo, caminho, corpo, timeoutMs = 8000) {
   const r = await fetch(`${MA_URL}/api/v1${caminho}`, {
     method: metodo,
-    headers: { 'x-api-key': MA_KEY },
-    signal: AbortSignal.timeout(8000),
+    headers: { 'x-api-key': MA_KEY, ...(corpo ? { 'content-type': 'application/json' } : {}) },
+    body: corpo ? JSON.stringify(corpo) : undefined,
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (r.status === 404) return null;
-  if (!r.ok) throw new Error(`Meet Ayio respondeu ${r.status}`);
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({}));
+    throw Object.assign(new Error(`Meet Ayio respondeu ${r.status}${j.error ? `: ${j.error}` : ''}`), { status: r.status });
+  }
   return r.status === 204 ? true : r.json();
 }
+
+// ---------- Transcricao e ata (Meet Ayio) ----------
+// { status, text, segments, minutes, error, ... } | null (sem transcricao)
+const obterTranscricao = (id) => chamarMeetAyio('GET', `/recordings/${encodeURIComponent(id)}/transcript`);
+// Pede (ou refaz, se falhou) a transcricao + ata. Assincrono: o resultado chega no webhook transcript.ready.
+const pedirTranscricao = (id) => chamarMeetAyio('POST', `/recordings/${encodeURIComponent(id)}/transcript`);
+// Refaz SO a ata (sincrono, ate ~2 min) com a lista de presenca real e o titulo da sessao.
+const regerarAta = (id, { participantes, titulo, instrucoes } = {}) => chamarMeetAyio(
+  'POST', `/recordings/${encodeURIComponent(id)}/minutes`,
+  { participants: participantes, title: titulo, instructions: instrucoes }, 150_000
+);
 
 // { id, roomName, sizeBytes, durationSec, createdAt, expiresAt, downloadUrl (15 min) } | null
 const obterGravacao = (id) => chamarMeetAyio('GET', `/recordings/${encodeURIComponent(id)}`);
@@ -111,4 +126,5 @@ function verificarWebhook(corpoCru, header, segredo = process.env.MEET_AYIO_WEBH
 module.exports = {
   PROVEDOR, configurado, gerarSala,
   obterGravacao, listarGravacoes, apagarGravacao, verificarWebhook,
+  obterTranscricao, pedirTranscricao, regerarAta,
 };

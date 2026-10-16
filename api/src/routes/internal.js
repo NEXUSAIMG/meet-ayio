@@ -7,7 +7,7 @@ const SALA_VALIDA = /^[a-z0-9][a-z0-9-]{3,63}$/;
 
 // Rotas usadas só pela infraestrutura (script de finalização do Jibri).
 // Autenticação: Authorization: Bearer $RECORDER_SECRET.
-function rotasInternas({ cfg, store, storage, notificador }) {
+function rotasInternas({ cfg, store, storage, notificador, fila }) {
   const r = express.Router();
   r.use((req, res, next) => {
     const auth = (req.get('authorization') || '').replace(/^Bearer /, '');
@@ -42,7 +42,12 @@ function rotasInternas({ cfg, store, storage, notificador }) {
       expiresAt: new Date(Date.now() + dias * 24 * 60 * 60 * 1000),
     });
     await notificador.notificarGravacao(g, cliente, gravacaoPublica(g));
-    res.status(201).json({ id: g.id, sizeBytes, storageKey });
+    let transcricao = null;
+    if (cliente.transcriptionEnabled && fila) {
+      transcricao = await store.createTranscript({ recordingId: g.id, clientId: cliente.id, language: cfg.transcribe.language });
+      fila.enfileirar(transcricao.id);
+    }
+    res.status(201).json({ id: g.id, sizeBytes, transcription: transcricao ? 'PENDING' : 'OFF' });
   }));
 
   return r;

@@ -20,10 +20,15 @@ model Client {
   // Segredo HMAC dos webhooks (o cliente precisa dele para validar a assinatura).
   webhookSecret          String?      @map("webhook_secret") @db.VarChar(80)
   recordingRetentionDays Int          @default(30) @map("recording_retention_days")
+  // Transcrição + ata automáticas das gravações (opt-in, LGPD).
+  transcriptionEnabled   Boolean      @default(false) @map("transcription_enabled")
+  // Instruções próprias do cliente para a ata (substituem o modelo padrão).
+  minutesPrompt          String?      @map("minutes_prompt") @db.Text
   createdAt              DateTime     @default(now()) @map("created_at")
   sessions               Session[]
   tokens                 TokenIssue[]
   recordings             Recording[]
+  transcripts            Transcript[]
 
   @@map("clients")
 }
@@ -48,9 +53,12 @@ model TokenIssue {
   client    Client   @relation(fields: [clientId], references: [id])
   roomName  String   @map("room_name") @db.VarChar(64)
   moderator Boolean  @default(false)
+  // Nome exibido (vai para a ata como participante). Apagado após TOKEN_NAME_RETENTION_DAYS.
+  userName  String?  @map("user_name") @db.VarChar(120)
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([clientId, createdAt])
+  @@index([roomName, createdAt])
   @@map("token_issues")
 }
 
@@ -74,4 +82,27 @@ model Recording {
   @@index([clientId, createdAt])
   @@index([status, expiresAt])
   @@map("recordings")
+}
+
+// Transcrição e ata de uma gravação. Apagada junto com a gravação.
+model Transcript {
+  id           String    @id @default(uuid())
+  recordingId  String    @unique @map("recording_id")
+  clientId     String    @map("client_id")
+  client       Client    @relation(fields: [clientId], references: [id])
+  status       String    @default("PENDING") @db.VarChar(20) // PENDING | PROCESSING | DONE | FAILED
+  language     String    @default("pt") @db.VarChar(10)
+  text         String?   @db.LongText
+  segments     Json?     // [{ start, end, text }] em segundos
+  durationSec  Int?      @map("duration_sec")
+  minutes      String?   @db.LongText // rascunho da ata
+  minutesModel String?   @map("minutes_model") @db.VarChar(80)
+  error        String?   @db.VarChar(500)
+  attempts     Int       @default(0)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([clientId, createdAt])
+  @@map("transcripts")
 }

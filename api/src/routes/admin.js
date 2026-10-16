@@ -26,7 +26,7 @@ function rotasAdmin({ cfg, store }) {
 
   // Cria cliente e devolve apiKey e webhookSecret UMA única vez.
   r.post('/clients', assinc(async (req, res) => {
-    const { slug, name, roomPrefix, webhookUrl, recordingRetentionDays } = req.body || {};
+    const { slug, name, roomPrefix, webhookUrl, recordingRetentionDays, transcriptionEnabled } = req.body || {};
     if (!SLUG_VALIDO.test(slug || '')) return res.status(400).json({ error: 'slug_invalido' });
     const prefixo = roomPrefix || `${slug}-`;
     if (!PREFIXO_VALIDO.test(prefixo)) return res.status(400).json({ error: 'room_prefix_invalido' });
@@ -38,6 +38,7 @@ function rotasAdmin({ cfg, store }) {
         slug, name: String(name || slug).slice(0, 120), roomPrefix: prefixo,
         apiKeyHash: hashKey(apiKey), webhookUrl: webhookUrl || null, webhookSecret,
         recordingRetentionDays: Number.isInteger(recordingRetentionDays) ? recordingRetentionDays : 30,
+        transcriptionEnabled: transcriptionEnabled === true,
       });
       res.status(201).json({ ...publico(c), apiKey, webhookSecret });
     } catch (e) {
@@ -68,6 +69,16 @@ function rotasAdmin({ cfg, store }) {
     if (b.webhookUrl !== undefined) {
       if (b.webhookUrl && !urlValida(b.webhookUrl)) return res.status(400).json({ error: 'webhook_url_invalida' });
       dados.webhookUrl = b.webhookUrl || null;
+    }
+    if (b.transcriptionEnabled !== undefined) {
+      if (typeof b.transcriptionEnabled !== 'boolean') return res.status(400).json({ error: 'transcription_enabled_invalido' });
+      dados.transcriptionEnabled = b.transcriptionEnabled;
+    }
+    if (b.minutesPrompt !== undefined) {
+      if (b.minutesPrompt !== null && (typeof b.minutesPrompt !== 'string' || b.minutesPrompt.length > 8000)) {
+        return res.status(400).json({ error: 'minutes_prompt_invalido', max: 8000 });
+      }
+      dados.minutesPrompt = b.minutesPrompt?.trim() || null;
     }
     if (b.recordingRetentionDays !== undefined) {
       const d = Number(b.recordingRetentionDays);

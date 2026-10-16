@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { hashKey } = require('../apiKeys');
+const { nomesDistintos } = require('./comum');
 
 // Store em memória: testes e dev local sem banco. Mesma interface do prismaStore.
 function criarMemoryStore({ seedClientes = [] } = {}) {
@@ -7,6 +8,7 @@ function criarMemoryStore({ seedClientes = [] } = {}) {
   const sessoes = new Map(); // roomName → sessão
   const emissoes = []; // tokens emitidos (uso)
   const gravacoes = new Map(); // id → gravação
+  const transcricoes = new Map(); // id → transcrição
   const copia = (o) => (o ? { ...o } : null);
   const duplicado = (msg) => Object.assign(new Error(msg), { code: 'DUPLICADO' });
 
@@ -17,12 +19,15 @@ function criarMemoryStore({ seedClientes = [] } = {}) {
     async getClientById(id) {
       return copia([...clientes.values()].find((c) => c.id === id));
     },
-    async createClient({ slug, name, roomPrefix, apiKeyHash, webhookUrl = null, webhookSecret = null, recordingRetentionDays = 30 }) {
+    async createClient({
+      slug, name, roomPrefix, apiKeyHash, webhookUrl = null, webhookSecret = null, recordingRetentionDays = 30,
+      transcriptionEnabled = false, minutesPrompt = null,
+    }) {
       if (clientes.has(slug)) throw duplicado('slug já existe');
       if ([...clientes.values()].some((c) => c.roomPrefix === roomPrefix)) throw duplicado('prefixo já usado');
       const c = {
         id: crypto.randomUUID(), slug, name, roomPrefix, apiKeyHash, webhookUrl, webhookSecret,
-        recordingRetentionDays, active: true, createdAt: new Date(),
+        recordingRetentionDays, transcriptionEnabled, minutesPrompt, active: true, createdAt: new Date(),
       };
       clientes.set(slug, c);
       return copia(c);
@@ -46,9 +51,21 @@ function criarMemoryStore({ seedClientes = [] } = {}) {
       return copia(sessoes.get(roomName));
     },
     // Registra a emissão; cria a sessão se a sala ainda não existir (salas do próprio cliente).
-    async recordToken({ clientId, roomName, moderator }) {
+    async recordToken({ clientId, roomName, moderator, userName = null }) {
       if (!sessoes.has(roomName)) await store.createSession({ roomName, clientId });
-      emissoes.push({ clientId, roomName, moderator: Boolean(moderator), createdAt: new Date() });
+      emissoes.push({ clientId, roomName, moderator: Boolean(moderator), userName, createdAt: new Date() });
+    },
+    async listParticipantNames(roomName, de, ate) {
+      return nomesDistintos(emissoes.filter((e) => e.roomName === roomName && e.createdAt >= de && e.createdAt <= ate && e.userName));
+    },
+    async clearTokenNamesBefore(data) {
+      let n = 0;
+      for (const e of emissoes) if (e.createdAt < data && e.userName) { e.userName = null; n++; }
+      return n;
+    },
+    // Testes: envelhece emissões (simula o tempo passando).
+    _envelhecerTokens(ms) {
+      for (const e of emissoes) e.createdAt = new Date(e.createdAt.getTime() - ms);
     },
 
     async createRecording(dados) {
@@ -77,6 +94,34 @@ function criarMemoryStore({ seedClientes = [] } = {}) {
       return [...gravacoes.values()].filter((g) => g.status === 'READY' && g.expiresAt <= agora).slice(0, limit).map(copia);
     },
 
+    async createTranscript({ recordingId, clientId, language = 'pt' }) {
+      if ([...transcricoes.values()].some((t) => t.recordingId === recordingId)) throw duplicado('transcrição já existe');
+      const t = {
+        id: crypto.randomUUID(), recordingId, clientId, status: 'PENDING', language, text: null, segments: null,
+        durationSec: null, minutes: null, minutesModel: null, error: null, attempts: 0, createdAt: new Date(), updatedAt: new Date(),
+      };
+      transcricoes.set(t.id, t);
+      return copia(t);
+    },
+    async getTranscript(id) {
+      return copia(transcricoes.get(id));
+    },
+    async getTranscriptByRecording(recordingId) {
+      return copia([...transcricoes.values()].find((t) => t.recordingId === recordingId));
+    },
+    async updateTranscript(id, dados) {
+      const t = transcricoes.get(id);
+      if (!t) return null;
+      Object.assign(t, dados, { updatedAt: new Date() });
+      return copia(t);
+    },
+    async listTranscriptsByStatus(statuses) {
+      return [...transcricoes.values()].filter((t) => statuses.includes(t.status)).map(copia);
+    },
+    async deleteTranscriptByRecording(recordingId) {
+      for (const [id, t] of transcricoes) if (t.recordingId === recordingId) transcricoes.delete(id);
+    },
+
     async usage(clientId, de, ate) {
       const dentro = (x) => x.clientId === clientId && x.createdAt >= de && x.createdAt < ate;
       const s = [...sessoes.values()].filter(dentro);
@@ -98,6 +143,8 @@ function criarMemoryStore({ seedClientes = [] } = {}) {
         recordings: g.length,
         recordedMinutes: Math.round(g.reduce((a, x) => a + (x.durationSec || 0), 0) / 60),
         recordedBytes: g.reduce((a, x) => a + Number(x.sizeBytes || 0), 0),
+        transcribedMinutes: Math.round([...transcricoes.values()]
+          .filter((x) => dentro(x) && x.status === 'DONE').reduce((a, x) => a + (x.durationSec || 0), 0) / 60),
         byMonth: [...porMes.values()].sort((a, b) => a.month.localeCompare(b.month)),
       };
     },

@@ -9,6 +9,8 @@ const { criarApp } = require('../src/app');
 const { criarMemoryStore } = require('../src/stores/memoryStore');
 const { criarLocalStorage } = require('../src/storage/local');
 const { criarNotificador } = require('../src/webhooks');
+const { criarMidia } = require('../src/transcricao/midia');
+const { criarFilaTranscricao } = require('../src/transcricao/fila');
 
 const ENV = {
   JWT_APP_ID: 'meet-ayio',
@@ -19,7 +21,9 @@ const ENV = {
   MEET_AYIO_SEED_CLIENTS: 'seucartorio:chave-sc:sc-,botayio:chave-bot:bot-',
 };
 
-async function comServidor(fn, { env = {}, delaysMs = [0] } = {}) {
+const desligado = { configurado: false };
+
+async function comServidor(fn, { env = {}, delaysMs = [0], transcritor = desligado, redator = desligado } = {}) {
   const cfg = carregarConfig({ ...ENV, ...env });
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'meet-ayio-test-'));
   const store = criarMemoryStore({ seedClientes: cfg.seedClientes });
@@ -28,10 +32,13 @@ async function comServidor(fn, { env = {}, delaysMs = [0] } = {}) {
   const base = `http://127.0.0.1:${servidor.address().port}`;
   const storage = criarLocalStorage({ dir, segredo: 'segredo-arquivos', baseUrl: base });
   const notificador = criarNotificador({ store, delaysMs, timeoutMs: 2000 });
-  servidor.on('request', criarApp({ cfg, store, storage, notificador }));
+  const midia = criarMidia({ ffmpeg: cfg.ffmpegPath, ffprobe: cfg.ffprobePath });
+  const fila = criarFilaTranscricao({ cfg: { ...cfg, tmpDir: dir }, store, storage, midia, transcritor, redator, notificador });
+  servidor.on('request', criarApp({ cfg, store, storage, notificador, fila }));
   try {
-    await fn({ base, store, storage, notificador, cfg, dir });
+    await fn({ base, store, storage, notificador, fila, cfg, dir });
   } finally {
+    await fila.aguardar();
     await notificador.aguardar();
     await new Promise((r) => servidor.close(r));
     fs.rmSync(dir, { recursive: true, force: true });
@@ -52,7 +59,25 @@ const req = (base, metodo, p, { key, admin, bearer, body, raw, headers = {} } = 
 const post = (base, p, opts) => req(base, 'POST', p, opts);
 const lerJwt = (t) => jwt.verify(t, 'segredo-de-teste', { algorithms: ['HS256'], audience: 'meet-ayio', issuer: 'meet-ayio' });
 
-// Servidor que recebe webhooks e guarda {headers, corpo}. falhasIniciais = quantas respostas 500 antes do 200.
+// Servidor genérico de teste: guarda as requisições e responde com `responder(req, corpoBuffer, n)`.
+async function servidorFalso(responder) {
+  const recebidos = [];
+  const srv = http.createServer((rq, rs) => {
+    const partes = [];
+    rq.on('data', (c) => partes.push(c));
+    rq.on('end', async () => {
+      const corpo = Buffer.concat(partes);
+      recebidos.push({ headers: rq.headers, corpo, url: rq.url });
+      const { status = 200, json } = (await responder(rq, corpo, recebidos.length)) || {};
+      rs.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(json ?? {}));
+    });
+  });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  return { url: `http://127.0.0.1:${srv.address().port}`, recebidos, fechar: () => new Promise((r) => srv.close(r)) };
+}
+
+// Receptor de webhooks: recebidos = [{ headers, corpo (string) }].
+// falhasIniciais = quantas respostas 500 antes do 200.
 async function receptorWebhook({ falhasIniciais = 0 } = {}) {
   const recebidos = [];
   let falhas = falhasIniciais;
@@ -68,4 +93,4 @@ async function receptorWebhook({ falhasIniciais = 0 } = {}) {
   return { url: `http://127.0.0.1:${srv.address().port}/hook`, recebidos, fechar: () => new Promise((r) => srv.close(r)) };
 }
 
-module.exports = { comServidor, req, post, lerJwt, receptorWebhook };
+module.exports = { comServidor, req, post, lerJwt, receptorWebhook, servidorFalso };

@@ -37,15 +37,24 @@ Railway não dá); fala com o prosody por um TCP proxy no 5222.
    retentativas, retenção, uso com minutos/bytes; `finalize.sh` +
    `retry-pending.sh` testados ponta a ponta contra MySQL real.
    Falta: subir o Jibri numa VPS e ligar `ENABLE_RECORDING` no stack.
-7. Webhook + ata — lado do SeuCartório **preparado** (rota do webhook com
-   verificação de assinatura, model `VideoGravacao`, download/exclusão no
-   painel). Falta: a ata automática em si
-   (`plano-video-gravacao-ata-lgpd-14-10.md`) consumindo o `recording.ready`.
+7. Ata automática — **pronta e testada (v0.4, 16/10)** no Meet Ayio:
+   ffmpeg extrai/corta o áudio (sem o limite de 25 MB do Whisper), Groq
+   Whisper transcreve com tempos, Claude redige o rascunho (regras de
+   fidelidade fixas, formato trocável por cliente), participantes vindos dos
+   tokens, webhook `transcript.ready`, refazer ata com lista de presença,
+   fila que retoma após reinício, `recording.deleted` para o cliente apagar
+   cópias. Lado do SeuCartório **preparado** (campos de ata no
+   `VideoGravacao`, rotas solicitar/refazer/ler). Opt-in por cliente
+   (`transcriptionEnabled`). Falta: chaves `TRANSCRIBE_API_KEY` (Groq) e
+   `ANTHROPIC_API_KEY` no deploy.
 
 ## Decisões em aberto
 - Domínio (ex.: `meet.ayio.com.br`; API em `api.meet.ayio.com.br`).
 - Storage das gravações: volume do Railway ou Railway Bucket.
 - VPS do Jibri (provedor/tamanho; 1 gravação simultânea por container).
 - Quotas por cliente no v1 ou só controle de acesso (hoje: acesso + `/usage`).
+- Atas de atos notariais: se alguma videoconferência for ato notarial, a
+  guarda da gravação segue regra própria — conferir antes de usar a
+  retenção padrão de 30 dias para esses casos.
 - Licença do template upstream (sem LICENSE no repo).
 - GitHub: repo `marciogoes/meet-ayio` ainda não criado (código só local).

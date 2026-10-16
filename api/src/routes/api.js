@@ -3,11 +3,13 @@ const express = require('express');
 const { gerarTokenJitsi } = require('../jitsiToken');
 const { hashKey } = require('../apiKeys');
 const { assinc, gravacaoPublica, nomeArquivo } = require('./comum');
+const { apagarGravacao } = require('../retention');
+const { transcricaoPublica } = require('../transcricao/fila');
 
 const SALA_VALIDA = /^[a-z0-9][a-z0-9-]{3,63}$/;
 
 // API dos clientes. Autenticação: x-api-key (ou Authorization: Bearer).
-function rotasApi({ cfg, store, storage, notificador }) {
+function rotasApi({ cfg, store, storage, notificador, fila }) {
   const r = express.Router();
   const urlSala = (room) => (cfg.jitsiDomain ? `https://${cfg.jitsiDomain}/${room}` : null);
   const infoJitsi = () => ({
@@ -38,7 +40,7 @@ function rotasApi({ cfg, store, storage, notificador }) {
     // Moderador pode gravar por padrão (botão "Gravar" no Jitsi); cliente pode desligar.
     const podeGravar = Boolean(moderator) && features?.recording !== false;
     const token = gerarTokenJitsi(cfg, { room, user, moderator, features: { recording: podeGravar } });
-    await store.recordToken({ clientId: req.cliente.id, roomName: room, moderator });
+    await store.recordToken({ clientId: req.cliente.id, roomName: room, moderator, userName: String(user.name).trim().slice(0, 120) });
     res.json({
       token, roomName: room, expiresIn: cfg.tokenTtlSeconds, ...infoJitsi(),
       joinUrl: urlSala(room) ? `${urlSala(room)}?jwt=${token}` : null,
@@ -83,13 +85,60 @@ function rotasApi({ cfg, store, storage, notificador }) {
     res.json({ ...gravacaoPublica(g), downloadUrl, downloadExpiresIn: cfg.downloadTtlSeconds });
   }));
 
-  // Exclusão antecipada (pedido do titular, LGPD).
+  // Exclusão antecipada (pedido do titular, LGPD). Apaga também transcrição e ata.
   r.delete('/recordings/:id', assinc(async (req, res) => {
     const g = await gravacaoDoCliente(req, res);
     if (!g) return;
-    await storage.delete(g.storageKey);
-    await store.updateRecording(g.id, { status: 'DELETED', deletedAt: new Date() });
+    await apagarGravacao({ store, storage, notificador, gravacao: g, motivo: 'request' });
     res.status(204).end();
+  }));
+
+  // ---------- Transcrição e ata ----------
+  r.get('/recordings/:id/transcript', assinc(async (req, res) => {
+    const g = await gravacaoDoCliente(req, res);
+    if (!g) return;
+    const t = await store.getTranscriptByRecording(g.id);
+    if (!t) return res.status(404).json({ error: 'sem_transcricao', hint: 'POST /recordings/:id/transcript para pedir' });
+    res.json(transcricaoPublica(t, g));
+  }));
+
+  // Pede (ou refaz, se falhou) a transcrição + ata desta gravação. Vale mesmo com o
+  // automático desligado no cliente: o pedido explícito é o consentimento do cliente.
+  r.post('/recordings/:id/transcript', assinc(async (req, res) => {
+    const g = await gravacaoDoCliente(req, res);
+    if (!g) return;
+    let t = await store.getTranscriptByRecording(g.id);
+    if (t && (t.status === 'PENDING' || t.status === 'PROCESSING')) return res.status(202).json(transcricaoPublica(t, g));
+    if (t && t.status === 'DONE' && req.query.force !== '1') return res.status(409).json({ error: 'ja_transcrita', hint: 'use ?force=1 para refazer' });
+    t = t
+      ? await store.updateTranscript(t.id, { status: 'PENDING', attempts: 0, error: null, text: null, segments: null, minutes: null, minutesModel: null })
+      : await store.createTranscript({ recordingId: g.id, clientId: req.cliente.id, language: cfg.transcribe.language });
+    fila.enfileirar(t.id);
+    res.status(202).json(transcricaoPublica(t, g));
+  }));
+
+  // Gera de novo SÓ a ata (sem retranscrever), com participantes e instruções.
+  // Body: { participants?: string[], instructions?: string, title?: string }. Síncrono (até ~2 min).
+  r.post('/recordings/:id/minutes', assinc(async (req, res) => {
+    const g = await gravacaoDoCliente(req, res);
+    if (!g) return;
+    const t = await store.getTranscriptByRecording(g.id);
+    if (!t || t.status !== 'DONE') return res.status(409).json({ error: 'transcricao_nao_pronta', status: t?.status || null });
+    if (!t.text) return res.status(409).json({ error: 'sem_fala_na_gravacao' });
+    const b = req.body || {};
+    const participantes = Array.isArray(b.participants)
+      ? b.participants.map((p) => String(p).trim().slice(0, 120)).filter(Boolean).slice(0, 50) : undefined;
+    try {
+      const atual = await fila.regerarAta({
+        transcricao: t, gravacao: g, cliente: req.cliente, participantes,
+        instrucoes: b.instructions ? String(b.instructions).slice(0, 4000) : undefined,
+        titulo: b.title ? String(b.title).slice(0, 120) : undefined,
+      });
+      res.json(transcricaoPublica(atual, g));
+    } catch (e) {
+      if (e.code === 'NAO_CONFIGURADO') return res.status(503).json({ error: 'ata_nao_configurada' });
+      res.status(502).json({ error: 'falha_ao_gerar_ata', detail: String(e.message).slice(0, 300) });
+    }
   }));
 
   // Reenvia o webhook recording.ready (ex.: endpoint do cliente estava fora do ar).

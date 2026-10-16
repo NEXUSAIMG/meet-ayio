@@ -31,6 +31,17 @@ function criarS3Storage({ endpoint, region, bucket, accessKeyId, secretAccessKey
       await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
     },
 
+    // Baixa para um arquivo temporário em `dir` (para o ffmpeg processar).
+    async paraArquivoLocal(key, dir) {
+      const fs = require('fs');
+      const path = require('path');
+      const { pipeline } = require('stream/promises');
+      const destino = path.join(dir, path.basename(key));
+      const r = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+      await pipeline(r.Body, fs.createWriteStream(destino));
+      return destino;
+    },
+
     downloadUrl(key, ttlSec, { filename }) {
       return getSignedUrl(client, new GetObjectCommand({
         Bucket: bucket,

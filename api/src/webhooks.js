@@ -17,8 +17,6 @@ function verificarAssinatura(segredo, corpo, header, toleranciaSeg = 300) {
 
 async function enviar({ url, segredo, evento, dados, timeoutMs }) {
   const corpo = JSON.stringify({ id: crypto.randomUUID(), event: evento, createdAt: new Date().toISOString(), data: dados });
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const r = await fetch(url, {
       method: 'POST',
@@ -29,32 +27,27 @@ async function enviar({ url, segredo, evento, dados, timeoutMs }) {
         'x-meetayio-signature': assinar(segredo || '', corpo),
       },
       body: corpo,
-      signal: ctrl.signal,
+      signal: AbortSignal.timeout(timeoutMs),
     });
     return { ok: r.ok, status: r.status };
   } catch (e) {
     return { ok: false, status: 0, erro: e.message };
-  } finally {
-    clearTimeout(timer);
   }
 }
 
-// Entrega recording.ready com retentativas em processo (estado salvo na gravação).
+// Entregas com retentativas em processo.
 function criarNotificador({ store, delaysMs, timeoutMs, agendar = setTimeout }) {
   const pendentes = new Set();
 
-  function notificarGravacao(gravacao, cliente, publico) {
-    if (!cliente.webhookUrl) return store.updateRecording(gravacao.id, { webhookStatus: 'NONE' });
+  // aoTentar(resultado, { tentativa, ultima }) → false interrompe as próximas tentativas.
+  function entregar({ cliente, evento, dados, aoTentar = async () => {} }) {
+    if (!cliente.webhookUrl) return false;
     const tentar = async (i) => {
-      const r = await enviar({ url: cliente.webhookUrl, segredo: cliente.webhookSecret, evento: 'recording.ready', dados: publico, timeoutMs });
-      const atual = await store.getRecording(gravacao.id);
-      if (!atual || atual.status === 'DELETED') return;
+      const r = await enviar({ url: cliente.webhookUrl, segredo: cliente.webhookSecret, evento, dados, timeoutMs });
       const ultima = i + 1 >= delaysMs.length;
-      await store.updateRecording(gravacao.id, {
-        webhookAttempts: (atual.webhookAttempts || 0) + 1,
-        webhookStatus: r.ok ? 'DELIVERED' : ultima ? 'FAILED' : 'PENDING',
-      });
-      if (!r.ok && !ultima) programar(i + 1);
+      const continuar = await aoTentar(r, { tentativa: i + 1, ultima });
+      if (!r.ok && !ultima && continuar !== false) programar(i + 1);
+      if (!r.ok && ultima) console.warn(`[webhook] ${evento} não entregue a ${cliente.slug} após ${i + 1} tentativas`);
     };
     const programar = (i) => {
       const p = new Promise((resolve) => {
@@ -63,7 +56,26 @@ function criarNotificador({ store, delaysMs, timeoutMs, agendar = setTimeout }) 
       pendentes.add(p);
       p.finally(() => pendentes.delete(p));
     };
-    return store.updateRecording(gravacao.id, { webhookStatus: 'PENDING' }).then(() => programar(0));
+    programar(0);
+    return true;
+  }
+
+  // recording.ready, com o estado da entrega salvo na gravação.
+  async function notificarGravacao(gravacao, cliente, publico) {
+    if (!cliente.webhookUrl) return store.updateRecording(gravacao.id, { webhookStatus: 'NONE' });
+    await store.updateRecording(gravacao.id, { webhookStatus: 'PENDING' });
+    entregar({
+      cliente, evento: 'recording.ready', dados: publico,
+      aoTentar: async (r, { ultima }) => {
+        const atual = await store.getRecording(gravacao.id);
+        if (!atual || atual.status === 'DELETED') return false;
+        await store.updateRecording(gravacao.id, {
+          webhookAttempts: (atual.webhookAttempts || 0) + 1,
+          webhookStatus: r.ok ? 'DELIVERED' : ultima ? 'FAILED' : 'PENDING',
+        });
+        return true;
+      },
+    });
   }
 
   // Testes: espera até não haver entregas em andamento.
@@ -71,7 +83,7 @@ function criarNotificador({ store, delaysMs, timeoutMs, agendar = setTimeout }) 
     while (pendentes.size) await Promise.all([...pendentes]);
   }
 
-  return { notificarGravacao, aguardar, enviar: (opts) => enviar({ timeoutMs, ...opts }) };
+  return { entregar, notificarGravacao, aguardar, enviar: (opts) => enviar({ timeoutMs, ...opts }) };
 }
 
 module.exports = { assinar, verificarAssinatura, criarNotificador };

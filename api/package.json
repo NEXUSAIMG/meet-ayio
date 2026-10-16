@@ -1,6 +1,6 @@
 {
   "name": "meet-ayio-api",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "API do Meet Ayio: emite JWT para o Jitsi self-hosted, cadastra clientes e mede uso",
   "main": "src/server.js",

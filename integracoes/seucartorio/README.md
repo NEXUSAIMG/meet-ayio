@@ -159,6 +159,50 @@ curl -X PATCH https://<meet-ayio-api>/admin/clients/seucartorio \
 # testar: POST /api/v1/webhooks/test com a API key do SeuCartório → { delivered: true }
 ```
 
+## Ata automática (transcrição + rascunho por IA)
+
+O Meet Ayio transcreve a gravação (Groq Whisper, o mesmo motor que o
+SeuCartório já usa, mas sem o limite de 25 MB: o áudio é extraído e cortado
+em partes de 20 min com ffmpeg) e redige um **rascunho de ata** com o Claude,
+no mesmo espírito das atas do SeuCartório: fidelidade total, `[inaudível]`,
+"gerado por IA — revisar". A lista de participantes sai dos nomes que o
+SeuCartório já manda no token.
+
+1. Campos a mais no model `VideoGravacao`:
+
+```prisma
+  ata             String?   @db.LongText
+  ataStatus       String?   @map("ata_status")        // PROCESSANDO | PRONTA | SEM_ATA | FALHOU
+  ataErro         String?   @map("ata_erro") @db.VarChar(500)
+  ataAtualizadaEm DateTime? @map("ata_atualizada_em")
+```
+
+2. Ligar no Meet Ayio (por cliente) e, se quiser, o formato do cartório:
+
+```bash
+curl -X PATCH https://<meet-ayio-api>/admin/clients/seucartorio \
+  -H "authorization: Bearer $ADMIN_TOKEN" -H "content-type: application/json" \
+  -d '{"transcriptionEnabled": true,
+       "minutesPrompt": "Formato: TERMO DE ATENDIMENTO POR VIDEOCONFERÊNCIA ... (seções do cartório)"}'
+```
+
+   O `minutesPrompt` substitui só o **formato**; as regras de fidelidade do
+   Meet Ayio continuam valendo sempre.
+
+3. Rotas novas (já em `videoGravacao.routes.js`):
+
+| Método | Rota | O que faz |
+|---|---|---|
+| GET | `/api/video-sessions/gravacoes/:gravacaoId/ata` | rascunho salvo + status |
+| POST | `/api/video-sessions/gravacoes/:gravacaoId/ata/solicitar` | pede transcrição + ata (automático desligado ou falhou) |
+| POST | `/api/video-sessions/gravacoes/:gravacaoId/ata/refazer` | refaz só a ata com a **lista de presença real** (`VideoParticipante`) e o título da sessão; `{ instrucoes? }` |
+
+Eventos tratados no webhook: `transcript.ready` (grava a ata), `transcript.failed`
+e `recording.deleted` (apaga a cópia da ata quando a gravação some no Meet
+Ayio — retenção ou pedido do titular).
+
+Limite do corpo do webhook: **2 MB** (o `transcript.ready` traz o texto inteiro).
+
 ## Comportamento do webhook
 
 - Resposta 2xx = entregue. 5xx/timeout = o Meet Ayio tenta de novo (na hora,

@@ -55,6 +55,13 @@ function criarLocalStorage({ dir, segredo, baseUrl = '' }) {
       }
     },
 
+    // Caminho no disco para processar (ffmpeg). No storage local é o próprio arquivo.
+    async paraArquivoLocal(key) {
+      const p = caminho(key);
+      await fsp.access(p);
+      return p;
+    },
+
     async abrir(key) {
       const p = caminho(key);
       const { size } = await fsp.stat(p);

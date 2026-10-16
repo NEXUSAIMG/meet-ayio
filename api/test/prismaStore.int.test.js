@@ -11,6 +11,7 @@ test('prismaStore: contrato completo contra MySQL', { skip: !url && 'sem TEST_DA
   const { criarPrismaStore } = require('../src/stores/prismaStore');
   const prisma = new PrismaClient({ datasources: { db: { url } } });
   try {
+    await prisma.transcript.deleteMany();
     await prisma.recording.deleteMany();
     await prisma.tokenIssue.deleteMany();
     await prisma.session.deleteMany();
@@ -28,8 +29,12 @@ test('prismaStore: contrato completo contra MySQL', { skip: !url && 'sem TEST_DA
       (e) => e.code === 'DUPLICADO'
     );
 
-    await store.recordToken({ clientId: c.id, roomName: 'sc-sala-1', moderator: true });
-    await store.recordToken({ clientId: c.id, roomName: 'sc-sala-1', moderator: false });
+    await store.recordToken({ clientId: c.id, roomName: 'sc-sala-1', moderator: true, userName: 'Karina' });
+    await store.recordToken({ clientId: c.id, roomName: 'sc-sala-1', moderator: false, userName: 'Davi' });
+    const janela = [new Date(Date.now() - 3600_000), new Date(Date.now() + 1000)];
+    assert.deepStrictEqual(await store.listParticipantNames('sc-sala-1', ...janela), ['Karina (moderador)', 'Davi']);
+    assert.strictEqual(await store.clearTokenNamesBefore(new Date(Date.now() + 5000)), 2);
+    assert.deepStrictEqual(await store.listParticipantNames('sc-sala-1', ...janela), []);
     await store.createSession({ roomName: 'sc-sala-2', clientId: c.id, title: 'Atendimento' });
     assert.strictEqual((await store.getSession('sc-sala-1')).clientId, c.id);
 
@@ -45,7 +50,22 @@ test('prismaStore: contrato completo contra MySQL', { skip: !url && 'sem TEST_DA
     assert.strictEqual((await store.listRecordings(c.id)).length, 1);
     assert.strictEqual(await store.updateRecording('nao-existe', { status: 'DELETED' }), null);
 
+    // transcrições
+    const tr = await store.createTranscript({ recordingId: g1.id, clientId: c.id });
+    await assert.rejects(store.createTranscript({ recordingId: g1.id, clientId: c.id }), (e) => e.code === 'DUPLICADO');
+    assert.strictEqual(tr.status, 'PENDING');
+    const textoLongo = 'palavra '.repeat(200_000); // ~1,6 MB (LongText)
+    const segs = [{ start: 1.5, end: 3, text: 'olá' }, { start: 61, end: 64, text: 'tudo bem' }];
+    await store.updateTranscript(tr.id, { status: 'DONE', text: textoLongo, segments: segs, durationSec: 150, minutes: 'RASCUNHO', minutesModel: 'm' });
+    const lida = await store.getTranscriptByRecording(g1.id);
+    assert.deepStrictEqual([lida.text.length, lida.segments, lida.minutes], [textoLongo.length, segs, 'RASCUNHO']);
+    assert.deepStrictEqual((await store.listTranscriptsByStatus(['DONE'])).map((t) => t.id), [tr.id]);
+    assert.strictEqual((await store.listTranscriptsByStatus(['PENDING', 'PROCESSING'])).length, 0);
+
     const u = await store.usage(c.id, new Date(Date.now() - 86400000), new Date(Date.now() + 86400000));
+    assert.strictEqual(u.transcribedMinutes, 3);
+    await store.deleteTranscriptByRecording(g1.id);
+    assert.strictEqual(await store.getTranscriptByRecording(g1.id), null);
     assert.deepStrictEqual(
       { s: u.sessions, t: u.tokens, m: u.moderatorTokens, g: u.recordings, min: u.recordedMinutes, b: u.recordedBytes, meses: u.byMonth.length },
       { s: 2, t: 2, m: 1, g: 2, min: 11, b: 5_000_001_000, meses: 1 }

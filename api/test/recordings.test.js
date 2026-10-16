@@ -112,16 +112,30 @@ test('cliente sem webhookUrl: gravação fica com webhookStatus NONE', () => com
   assert.strictEqual((await store.getRecording(id)).webhookStatus, 'NONE');
 }));
 
-test('retenção apaga só as vencidas (arquivo e registro)', () => comServidor(async ({ base, store, storage }) => {
-  await post(base, '/api/v1/tokens', { key: 'chave-sc', body: { room: SALA, user: { name: 'A' } } });
-  const { id: velha } = await (await enviarGravacao(base, SALA)).json();
-  const { id: nova } = await (await enviarGravacao(base, SALA)).json();
-  await store.updateRecording(velha, { expiresAt: new Date(Date.now() - 1000) });
-  const chaveVelha = (await store.getRecording(velha)).storageKey;
+test('retenção apaga só as vencidas (arquivo e registro) e avisa recording.deleted', async () => {
+  const hook = await receptorWebhook();
+  try {
+    await comServidor(async ({ base, store, storage, notificador }) => {
+      const c = await preparar(base, hook.url);
+      const { id: velha } = await (await enviarGravacao(base, 'c2-sala-gravada')).json();
+      const { id: nova } = await (await enviarGravacao(base, 'c2-sala-gravada')).json();
+      await store.updateRecording(velha, { expiresAt: new Date(Date.now() - 1000) });
+      const chaveVelha = (await store.getRecording(velha)).storageKey;
 
-  assert.strictEqual(await executarRetencao({ store, storage }), 1);
-  assert.strictEqual((await store.getRecording(velha)).status, 'DELETED');
-  assert.strictEqual((await store.getRecording(nova)).status, 'READY');
-  await assert.rejects(storage.abrir(chaveVelha));
-  assert.strictEqual(await executarRetencao({ store, storage }), 0, 'idempotente');
-}));
+      assert.strictEqual(await executarRetencao({ store, storage, notificador }), 1);
+      assert.strictEqual((await store.getRecording(velha)).status, 'DELETED');
+      assert.strictEqual((await store.getRecording(nova)).status, 'READY');
+      await assert.rejects(storage.abrir(chaveVelha));
+      assert.strictEqual(await executarRetencao({ store, storage, notificador }), 0, 'idempotente');
+
+      // pedido do titular
+      assert.strictEqual((await req(base, 'DELETE', `/api/v1/recordings/${nova}`, { key: c.apiKey })).status, 204);
+      await notificador.aguardar();
+      const apagadas = hook.recebidos.filter((r) => r.headers['x-meetayio-event'] === 'recording.deleted').map((r) => JSON.parse(r.corpo).data);
+      assert.deepStrictEqual(apagadas.map((d) => [d.id, d.reason]), [[velha, 'retention'], [nova, 'request']]);
+      assert.ok(verificarAssinatura(c.webhookSecret, hook.recebidos.at(-1).corpo, hook.recebidos.at(-1).headers['x-meetayio-signature']));
+    });
+  } finally {
+    await hook.fechar();
+  }
+});
