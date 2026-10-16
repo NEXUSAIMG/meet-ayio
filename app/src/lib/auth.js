@@ -5,7 +5,7 @@ import { enviarEmail, emailLogin } from './email';
 import { sha256, tokenAleatorio, normalizarEmail, emailValido, caminhoSeguro } from './util.mjs';
 
 export const COOKIE = 'ma_sessao';
-const VALIDADE_LINK_MS = 15 * 60_000;
+const VALIDADE_LINK_MS = 60 * 60_000;
 const VALIDADE_SESSAO_MS = 30 * 24 * 3600_000;
 const LINKS_POR_HORA = 5;
 const APP_URL = () => (process.env.APP_URL || 'http://localhost:3100').replace(/\/$/, '');

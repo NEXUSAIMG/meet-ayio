@@ -18,7 +18,7 @@ No ar: https://app-production-7ae6.up.railway.app (serviço `app` do projeto
   participante (convidado só informa o nome).
 - A sala embute o Jitsi pela IFrame API. Com sala de espera ligada, o
   anfitrião liga o lobby ao entrar e aprova quem pede para participar.
-- Login: link mágico (15 min, uso único, só o hash no banco). O link abre uma
+- Login: link mágico (1 hora, uso único, só o hash no banco). O link abre uma
   página com botão "Entrar" — antivírus de e-mail que visitam o link não
   gastam o acesso. Sessão em cookie httpOnly (30 dias).
 - Gravações e atas vêm da API, filtradas pela sala da reunião; só o dono vê,

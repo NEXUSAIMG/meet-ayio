@@ -15,7 +15,7 @@ export function FormLogin({ proximo }) {
       <div className="text-center">
         <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-mar-50 text-2xl" aria-hidden="true">✉️</div>
         <h2 className="font-titulo text-2xl font-bold">Confira seu e-mail</h2>
-        <p className="mt-2 text-tinta/70">Mandamos um link para <strong className="text-tinta">{estado.email}</strong>. Ele vale por 15 minutos.</p>
+        <p className="mt-2 text-tinta/70">Mandamos um link para <strong className="text-tinta">{estado.email}</strong>. Ele vale por 1 hora.</p>
         <p className="mt-4 text-sm text-tinta/60">Não chegou? Veja a caixa de spam ou <a href="/entrar" className="font-semibold text-mar-600 underline">tente de novo</a>.</p>
       </div>
     );

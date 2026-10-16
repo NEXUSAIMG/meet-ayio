@@ -45,9 +45,9 @@ const botao = (url, texto) =>
 export function emailLogin(url) {
   return {
     assunto: 'Seu link para entrar no Meet Ayio',
-    html: moldura(`<p>Clique no botão para entrar. O link vale por 15 minutos e só funciona uma vez.</p>${botao(url, 'Entrar no Meet Ayio')}
+    html: moldura(`<p>Clique no botão para entrar. O link vale por 1 hora e só funciona uma vez.</p>${botao(url, 'Entrar no Meet Ayio')}
       <p style="font-size:13px;color:#6b7280">Se o botão não abrir, copie este endereço no navegador:<br>${e(url)}</p>`),
-    texto: `Entre no Meet Ayio (link válido por 15 minutos, uma vez):\n${url}`,
+    texto: `Entre no Meet Ayio (link válido por 1 hora, uma vez):\n${url}`,
   };
 }
 
