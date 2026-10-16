@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Meet Ayio · Admin</title>
+<style>
+:root {
+  --bg: #f6f7f9; --card: #ffffff; --text: #1b1f24; --muted: #5e6875; --line: #e2e5ea;
+  --accent: #2357d9; --accent-text: #ffffff; --ok: #1a7f46; --warn: #a15c00; --bad: #c0362c;
+  --ok-bg: #e5f5ec; --warn-bg: #fff3e0; --bad-bg: #fde8e6; --code: #f0f2f5;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111418; --card: #1a1e24; --text: #e7eaee; --muted: #9aa4b1; --line: #2b313a;
+    --accent: #5b8cff; --accent-text: #0d1117; --ok: #4cc38a; --warn: #f0a443; --bad: #ff7b72;
+    --ok-bg: #13291f; --warn-bg: #2e2312; --bad-bg: #331a18; --code: #222832;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+header { display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+header h1 { font-size: 17px; margin: 0; font-weight: 650; }
+header .sp { flex: 1; }
+nav { display: flex; gap: 4px; }
+nav button { background: none; border: 0; color: var(--muted); padding: 6px 12px; border-radius: 6px; font: inherit; cursor: pointer; }
+nav button.on { background: var(--code); color: var(--text); font-weight: 600; }
+main { max-width: 1180px; margin: 0 auto; padding: 20px 16px 60px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+.card h2 { font-size: 15px; margin: 0 0 12px; }
+.grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.stat { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.stat b { display: block; font-size: 22px; font-weight: 650; }
+.stat span { color: var(--muted); font-size: 13px; }
+.badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.b-ok { background: var(--ok-bg); color: var(--ok); }
+.b-warn { background: var(--warn-bg); color: var(--warn); }
+.b-bad { background: var(--bad-bg); color: var(--bad); }
+.b-off { background: var(--code); color: var(--muted); }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 8px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: .03em; }
+tr.click { cursor: pointer; }
+tr.click:hover td { background: var(--code); }
+.scroll { overflow-x: auto; }
+table.larga { min-width: 900px; }
+td code, td.nw { white-space: nowrap; }
+button.b, a.b { font: inherit; font-size: 14px; border: 1px solid var(--line); background: var(--card); color: var(--text); padding: 6px 12px; border-radius: 6px; cursor: pointer; text-decoration: none; display: inline-block; }
+button.b:hover { border-color: var(--muted); }
+button.p { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+button.d { color: var(--bad); }
+button.s { padding: 3px 8px; font-size: 13px; }
+button:disabled { opacity: .5; cursor: default; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+input[type=text], input[type=password], input[type=number], input[type=url], input[type=month], textarea, select {
+  width: 100%; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px;
+}
+textarea { min-height: 90px; resize: vertical; }
+.form { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.form .full { grid-column: 1 / -1; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text); }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.bar { height: 6px; background: var(--code); border-radius: 3px; margin-top: 4px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--accent); }
+.bar i.full { background: var(--bad); }
+.secret { background: var(--warn-bg); border: 1px solid var(--warn); border-radius: 8px; padding: 12px; margin-bottom: 16px; }
+.secret code { display: block; background: var(--card); padding: 6px 8px; border-radius: 4px; margin: 4px 0 8px; word-break: break-all; }
+code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+ul.problems { margin: 0; padding-left: 20px; }
+#login { max-width: 380px; margin: 12vh auto; }
+#msg { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); padding: 10px 16px; border-radius: 8px; background: var(--text); color: var(--bg); display: none; z-index: 20; max-width: calc(100% - 32px); }
+dialog { border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--text); width: min(820px, calc(100% - 32px)); padding: 0; }
+dialog::backdrop { background: rgba(0,0,0,.45); }
+dialog .hd { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+dialog .hd h3 { margin: 0; font-size: 15px; flex: 1; }
+dialog .bd { padding: 16px; max-height: 70vh; overflow: auto; white-space: pre-wrap; font-size: 14px; }
+.hidden { display: none !important; }
+@media (max-width: 640px) {
+  header { flex-wrap: wrap; padding: 10px 16px; }
+  nav { order: 3; width: 100%; }
+  th, td { padding: 6px 5px; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Meet Ayio · Admin</h1>
+  <span id="statusTopo"></span>
+  <span class="sp"></span>
+  <nav id="abas" class="hidden">
+    <button data-aba="saude" class="on">Saúde</button>
+    <button data-aba="clientes">Clientes</button>
+  </nav>
+  <button class="b s hidden" id="sair">Sair</button>
+</header>
+
+<main>
+  <section id="login" class="card">
+    <h2>Entrar</h2>
+    <p class="muted small">Use o <code>ADMIN_TOKEN</code> configurado na API. Ele fica só nesta aba do navegador.</p>
+    <form id="formLogin">
+      <label for="token">Token de administração</label>
+      <input type="password" id="token" autocomplete="off" required>
+      <div class="row" style="margin-top:12px"><button class="b p" type="submit">Entrar</button></div>
+    </form>
+  </section>
+
+  <section id="aba-saude" class="hidden"></section>
+
+  <section id="aba-clientes" class="hidden">
+    <div id="lista">
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <h2 style="margin:0">Clientes e uso</h2>
+          <div class="row">
+            <input type="month" id="mes" style="width:auto">
+            <button class="b p" id="novo">Novo cliente</button>
+          </div>
+        </div>
+      </div>
+      <div class="card scroll"><table id="tabClientes"></table></div>
+    </div>
+    <div id="detalhe" class="hidden"></div>
+  </section>
+</main>
+
+<dialog id="dlg"><div class="hd"><h3 id="dlgTitulo"></h3><button class="b s" id="dlgFechar">Fechar</button></div><div class="bd" id="dlgCorpo"></div></dialog>
+<div id="msg" role="status"></div>
+
+<script>
+(function () {
+  'use strict';
+  var TOKEN = '';
+  try { TOKEN = sessionStorage.getItem('meetAyioAdmin') || ''; } catch (e) {}
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ---------- utilitários ----------
+  function h(tag, attrs) {
+    var el = document.createElement(tag);
+    var filhos = Array.prototype.slice.call(arguments, 2);
+    if (attrs) Object.keys(attrs).forEach(function (k) {
+      var v = attrs[k];
+      if (v == null || v === false) return;
+      if (k === 'class') el.className = v;
+      else if (k.slice(0, 2) === 'on') el.addEventListener(k.slice(2), v);
+      else if (k === 'html') el.innerHTML = v; // só com texto fixo do próprio painel
+      else el.setAttribute(k, v === true ? '' : v);
+    });
+    filhos.flat(Infinity).forEach(function (f) {
+      if (f == null || f === false) return;
+      el.appendChild(f.nodeType ? f : document.createTextNode(String(f)));
+    });
+    return el;
+  }
+  function limpar(el) { while (el.firstChild) el.removeChild(el.firstChild); return el; }
+  var timerMsg;
+  function aviso(texto, erro) {
+    var m = $('msg'); m.textContent = texto; m.style.display = 'block';
+    m.style.background = erro ? 'var(--bad)' : 'var(--text)';
+    clearTimeout(timerMsg); timerMsg = setTimeout(function () { m.style.display = 'none'; }, erro ? 6000 : 3000);
+  }
+  function api(metodo, caminho, corpo) {
+    return fetch('/admin' + caminho, {
+      method: metodo,
+      headers: Object.assign({ authorization: 'Bearer ' + TOKEN }, corpo ? { 'content-type': 'application/json' } : {}),
+      body: corpo ? JSON.stringify(corpo) : undefined,
+    }).then(function (r) {
+      if (r.status === 401) { sair(); throw new Error('Token inválido'); }
+      if (r.status === 204) return null;
+      return r.json().then(function (j) {
+        if (!r.ok && !(caminho === '/health' && r.status === 503)) {
+          var e = new Error(j.error || ('HTTP ' + r.status)); e.dados = j; throw e;
+        }
+        return j;
+      });
+    });
+  }
+  var data = function (iso) { return iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—'; };
+  var dur = function (s) { if (s == null) return '—'; var m = Math.round(s / 60); return s < 60 ? s + ' s' : m >= 60 ? Math.floor(m / 60) + ' h ' + (m % 60) + ' min' : m + ' min'; };
+  var mb = function (b) { return (Number(b || 0) / 1048576).toFixed(1).replace('.', ',') + ' MB'; };
+  var num = function (n) { return Number(n || 0).toLocaleString('pt-BR'); };
+  var ROTULO = {
+    ok: ['OK', 'b-ok'], degraded: ['Atenção', 'b-warn'], down: ['Fora do ar', 'b-bad'],
+    DELIVERED: ['entregue', 'b-ok'], PENDING: ['pendente', 'b-warn'], FAILED: ['falhou', 'b-bad'], NONE: ['sem webhook', 'b-off'],
+    DONE: ['pronta', 'b-ok'], PROCESSING: ['processando', 'b-warn'],
+    ativo: ['ativo', 'b-ok'], inativo: ['desativado', 'b-bad'], quota: ['quota atingida', 'b-warn'],
+  };
+  function selo(chave, texto) { var r = ROTULO[chave] || [chave, 'b-off']; return h('span', { class: 'badge ' + r[1] }, texto || r[0]); }
+  function erroMsg(e) {
+    var mapa = {
+      slug_invalido: 'Identificador inválido (minúsculas, números e hífen).', room_prefix_invalido: 'Prefixo de sala inválido (termina com hífen, até 16 caracteres).',
+      webhook_url_invalida: 'URL do webhook inválida.', slug_ou_prefixo_ja_existe: 'Já existe cliente com esse identificador ou prefixo.',
+      quota_invalida: 'Quota inválida (número inteiro ou vazio).', retencao_invalida: 'Retenção deve ser de 1 a 3650 dias.',
+      cliente_sem_webhook_url: 'Este cliente não tem URL de webhook.', minutes_prompt_invalido: 'Instruções da ata muito longas (máx. 8000).',
+    };
+    return mapa[e.message] || e.message;
+  }
+
+  // ---------- login ----------
+  function sair() {
+    TOKEN = ''; try { sessionStorage.removeItem('meetAyioAdmin'); } catch (e) {}
+    $('login').classList.remove('hidden'); $('abas').classList.add('hidden'); $('sair').classList.add('hidden');
+    $('aba-saude').classList.add('hidden'); $('aba-clientes').classList.add('hidden'); limpar($('statusTopo'));
+  }
+  function entrar() {
+    return api('GET', '/health').then(function (s) {
+      try { sessionStorage.setItem('meetAyioAdmin', TOKEN); } catch (e) {}
+      $('login').classList.add('hidden'); $('abas').classList.remove('hidden'); $('sair').classList.remove('hidden');
+      mostrarAba('saude', s);
+    });
+  }
+  $('formLogin').addEventListener('submit', function (ev) {
+    ev.preventDefault(); TOKEN = $('token').value.trim();
+    entrar().catch(function (e) { aviso(erroMsg(e), true); });
+  });
+  $('sair').addEventListener('click', sair);
+  $('abas').addEventListener('click', function (ev) { var a = ev.target.getAttribute('data-aba'); if (a) mostrarAba(a); });
+
+  function mostrarAba(aba, saudePronta) {
+    Array.prototype.forEach.call($('abas').children, function (b) { b.classList.toggle('on', b.getAttribute('data-aba') === aba); });
+    $('aba-saude').classList.toggle('hidden', aba !== 'saude');
+    $('aba-clientes').classList.toggle('hidden', aba !== 'clientes');
+    if (aba === 'saude') carregarSaude(saudePronta);
+    else { fecharDetalhe(); carregarClientes(); }
+  }
+
+  // ---------- saúde ----------
+  function carregarSaude(pronta) {
+    var alvo = $('aba-saude');
+    (pronta ? Promise.resolve(pronta) : api('GET', '/health')).then(function (s) {
+      limpar($('statusTopo')).appendChild(selo(s.status));
+      limpar(alvo);
+      var topo = h('div', { class: 'card' },
+        h('div', { class: 'row', style: 'justify-content:space-between' },
+          h('h2', { style: 'margin:0' }, 'Situação geral ', selo(s.status)),
+          h('div', { class: 'row' }, h('span', { class: 'muted small' }, 'versão ' + (s.version || '?') + ' · conferido ' + data(s.checkedAt)),
+            h('button', { class: 'b s', onclick: function () { carregarSaude(); } }, 'Atualizar'))),
+        s.problems && s.problems.length
+          ? h('ul', { class: 'problems', style: 'margin-top:12px' }, s.problems.map(function (p) { return h('li', null, p); }))
+          : h('p', { class: 'muted', style: 'margin:12px 0 0' }, 'Nenhum problema encontrado.'));
+      alvo.appendChild(topo);
+      if (s.status === 'down') {
+        alvo.appendChild(h('div', { class: 'card' }, h('p', null, 'Banco: ', s.database && s.database.error)));
+        return;
+      }
+      var tr = s.transcription, wh = s.webhooks;
+      alvo.appendChild(h('div', { class: 'card' }, h('h2', null, 'Serviços'),
+        h('div', { class: 'grid' },
+          stat(s.database.latencyMs + ' ms', 'Banco de dados'),
+          stat(s.storage.type === 's3' ? 'Bucket S3' : 'Volume local', 'Armazenamento'),
+          stat(tr.configured ? 'ligada' : 'desligada', 'Transcrição (Groq)'),
+          stat(tr.minutesConfigured ? 'ligada' : 'desligada', 'Ata (Claude)'),
+          stat(Math.round((s.uptimeSec || 0) / 3600) + ' h', 'API no ar há'))));
+
+      alvo.appendChild(h('div', { class: 'card' }, h('h2', null, 'Fila de transcrição'),
+        h('div', { class: 'grid' },
+          stat(num(tr.byStatus.PENDING), 'Aguardando'),
+          stat(num(tr.byStatus.PROCESSING), 'Processando'),
+          stat(num(tr.byStatus.DONE), 'Prontas'),
+          stat(num(tr.byStatus.FAILED), 'Falharam (total)'),
+          stat(tr.oldestPendingMinutes == null ? '—' : tr.oldestPendingMinutes + ' min', 'Mais antiga na fila')),
+        tr.process && tr.process.processing ? h('p', { class: 'small muted' }, 'Processando agora há ' + tr.process.processing.forSec + ' s') : null,
+        tr.recentFailures.length ? h('div', { class: 'scroll', style: 'margin-top:12px' }, h('table', null,
+          h('tr', null, h('th', null, 'Quando'), h('th', null, 'Gravação'), h('th', null, 'Erro'), h('th', null, '')),
+          tr.recentFailures.map(function (f) {
+            return h('tr', null, h('td', null, data(f.updatedAt)), h('td', null, h('code', null, f.recordingId.slice(0, 8))), h('td', null, f.error || '—'),
+              h('td', null, h('button', { class: 'b s', onclick: function () { acao('POST', '/recordings/' + f.recordingId + '/transcript', 'Transcrição reenviada para a fila', carregarSaude); } }, 'Refazer')));
+          }))) : null));
+
+      var falhasGrav = wh.recordingsFailed.concat(wh.recordingsStuckPending);
+      alvo.appendChild(h('div', { class: 'card' }, h('h2', null, 'Webhooks'),
+        h('div', { class: 'grid' },
+          stat(num(wh.process.delivered), 'Entregues'),
+          stat(num(wh.process.retried), 'Retentativas'),
+          stat(num(wh.process.failed), 'Desistências'),
+          stat(num(wh.process.inFlight), 'Em andamento')),
+        h('p', { class: 'small muted' }, 'Contadores desde ' + data(wh.process.since) + ' (zeram quando a API reinicia).'),
+        falhasGrav.length ? h('div', { class: 'scroll' }, h('table', null,
+          h('tr', null, h('th', null, 'Gravação'), h('th', null, 'Sala'), h('th', null, 'Estado'), h('th', null, 'Tentativas'), h('th', null, '')),
+          falhasGrav.map(function (g) {
+            return h('tr', null, h('td', null, data(g.createdAt)), h('td', null, g.roomName), h('td', null, selo(g.webhookStatus)), h('td', null, g.webhookAttempts),
+              h('td', null, h('button', { class: 'b s', onclick: function () { acao('POST', '/recordings/' + g.id + '/webhook', 'Webhook reenviado', carregarSaude); } }, 'Reenviar')));
+          }))) : null,
+        wh.recentFailures.length ? h('div', { class: 'scroll', style: 'margin-top:12px' }, h('table', null,
+          h('tr', null, h('th', null, 'Quando'), h('th', null, 'Evento'), h('th', null, 'Cliente'), h('th', null, 'Resposta')),
+          wh.recentFailures.map(function (f) {
+            return h('tr', null, h('td', null, data(f.at)), h('td', null, h('code', null, f.event)), h('td', null, f.client),
+              h('td', null, f.status ? 'HTTP ' + f.status : (f.error || 'sem resposta')));
+          }))) : null));
+    }).catch(function (e) { aviso(erroMsg(e), true); });
+  }
+  function stat(valor, rotulo) { return h('div', { class: 'stat' }, h('b', null, valor), h('span', null, rotulo)); }
+  function acao(metodo, caminho, ok, depois, corpo) {
+    return api(metodo, caminho, corpo).then(function (r) { if (ok) aviso(ok); if (depois) depois(r); return r; })
+      .catch(function (e) { aviso(erroMsg(e), true); });
+  }
+
+  // ---------- clientes ----------
+  var mesAtual = new Date().toISOString().slice(0, 7);
+  $('mes').value = mesAtual;
+  $('mes').addEventListener('change', carregarClientes);
+  $('novo').addEventListener('click', function () { abrirDetalhe(null); });
+
+  function quotaCel(usado, limite, sufixo) {
+    var txt = num(usado) + (limite != null ? ' / ' + num(limite) : '') + (sufixo || '');
+    if (limite == null) return h('td', null, txt);
+    var pct = limite === 0 ? 100 : Math.min(100, Math.round(usado / limite * 100));
+    return h('td', null, txt, h('div', { class: 'bar' }, h('i', { class: pct >= 100 ? 'full' : null, style: 'width:' + pct + '%' })));
+  }
+  function carregarClientes() {
+    var mes = $('mes').value || mesAtual;
+    api('GET', '/usage?month=' + mes).then(function (u) {
+      var t = limpar($('tabClientes'));
+      t.appendChild(h('tr', null, ['Cliente', 'Situação', 'Sessões', 'Tokens', 'Gravações', 'Min gravados', 'Min transcritos', 'Espaço (MB)']
+        .map(function (c) { return h('th', null, c); })));
+      if (!u.clients.length) t.appendChild(h('tr', null, h('td', { colspan: 8, class: 'muted' }, 'Nenhum cliente ainda. Use "Novo cliente".')));
+      u.clients.forEach(function (c) {
+        var q = c.quota, lim = q ? q.limits : {};
+        var exced = q && q.exceeded.length;
+        t.appendChild(h('tr', { class: 'click', onclick: function () { abrirDetalhe(c.slug); } },
+          h('td', null, h('b', null, c.name), h('div', { class: 'small muted' }, c.slug)),
+          h('td', null, c.active ? selo(exced ? 'quota' : 'ativo') : selo('inativo'),
+            c.transcriptionEnabled ? h('div', { class: 'small muted' }, 'com ata') : null),
+          h('td', null, num(c.sessions)), h('td', null, num(c.tokens)), h('td', null, num(c.recordings)),
+          quotaCel(c.recordedMinutes, lim.recordedMinutes), quotaCel(c.transcribedMinutes, lim.transcribedMinutes),
+          quotaCel(c.storageMb, lim.storageMb)));
+      });
+    }).catch(function (e) { aviso(erroMsg(e), true); });
+  }
+
+  function fecharDetalhe() { $('detalhe').classList.add('hidden'); $('lista').classList.remove('hidden'); }
+
+  function campo(rotulo, input, cls) { return h('div', { class: cls || null }, h('label', null, rotulo), input); }
+  function inQuota(nome, valor) { return h('input', { type: 'number', min: 0, step: 1, name: nome, value: valor == null ? '' : valor, placeholder: 'sem limite' }); }
+
+  function mostrarSegredos(alvo, titulo, pares) {
+    alvo.appendChild(h('div', { class: 'secret' }, h('b', null, titulo),
+      h('p', { class: 'small', style: 'margin:4px 0 8px' }, 'Copie agora: estes valores não aparecem de novo.'),
+      pares.map(function (p) { return [h('span', { class: 'small muted' }, p[0]), h('code', null, p[1])]; })));
+  }
+
+  function abrirDetalhe(slug) {
+    $('lista').classList.add('hidden');
+    var d = limpar($('detalhe')); d.classList.remove('hidden');
+    d.appendChild(h('div', { class: 'row', style: 'margin-bottom:12px' }, h('button', { class: 'b', onclick: function () { fecharDetalhe(); carregarClientes(); } }, '← Clientes')));
+    var avisos = h('div'); d.appendChild(avisos);
+    if (!slug) return formularioCliente(d, avisos, null);
+    api('GET', '/clients/' + encodeURIComponent(slug)).then(function (c) {
+      formularioCliente(d, avisos, c);
+      carregarGravacoes(d, c);
+    }).catch(function (e) { aviso(erroMsg(e), true); });
+  }
+
+  function formularioCliente(d, avisos, c) {
+    var novo = !c;
+    var f = h('form', { class: 'form' },
+      campo('Nome', h('input', { type: 'text', name: 'name', value: c ? c.name : '', required: true, maxlength: 120 })),
+      novo ? campo('Identificador (slug)', h('input', { type: 'text', name: 'slug', required: true, pattern: '[a-z0-9][a-z0-9-]{1,30}', placeholder: 'ex.: botayio' }))
+        : campo('Identificador', h('input', { type: 'text', value: c.slug, disabled: true })),
+      novo ? campo('Prefixo das salas', h('input', { type: 'text', name: 'roomPrefix', placeholder: 'padrão: <slug>-' }))
+        : campo('Prefixo das salas', h('input', { type: 'text', value: c.roomPrefix, disabled: true })),
+      campo('URL do webhook', h('input', { type: 'url', name: 'webhookUrl', value: c && c.webhookUrl || '', placeholder: 'https://...' }), 'full'),
+      campo('Guardar gravações por (dias)', h('input', { type: 'number', name: 'recordingRetentionDays', min: 1, max: 3650, value: c ? c.recordingRetentionDays : 30 })),
+      campo('Quota: minutos gravados/mês', inQuota('quotaRecordedMinutes', c && c.quotaRecordedMinutes)),
+      campo('Quota: minutos transcritos/mês', inQuota('quotaTranscribedMinutes', c && c.quotaTranscribedMinutes)),
+      campo('Quota: espaço das gravações (MB)', inQuota('quotaStorageMb', c && c.quotaStorageMb)),
+      h('div', { class: 'full' }, h('label', { class: 'check' }, h('input', { type: 'checkbox', name: 'transcriptionEnabled', checked: c && c.transcriptionEnabled }),
+        'Transcrever e gerar ata automaticamente de toda gravação')),
+      novo ? null : campo('Instruções próprias para a ata (opcional; substituem o formato padrão)',
+        h('textarea', { name: 'minutesPrompt' }, c.minutesPrompt || ''), 'full'),
+      h('div', { class: 'full row' },
+        h('button', { class: 'b p', type: 'submit' }, novo ? 'Criar cliente' : 'Salvar'),
+        novo ? null : h('span', { class: 'muted small' }, 'Criado em ' + data(c.createdAt))));
+
+    f.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var v = function (n) { var el = f.elements[n]; return el ? el.value.trim() : undefined; };
+      var q = function (n) { var x = v(n); return x === '' ? null : Number(x); };
+      var corpo = {
+        name: v('name'), webhookUrl: v('webhookUrl') || null,
+        recordingRetentionDays: Number(v('recordingRetentionDays')),
+        transcriptionEnabled: f.elements.transcriptionEnabled.checked,
+        quotaRecordedMinutes: q('quotaRecordedMinutes'), quotaTranscribedMinutes: q('quotaTranscribedMinutes'), quotaStorageMb: q('quotaStorageMb'),
+      };
+      if (novo) {
+        corpo.slug = v('slug'); if (v('roomPrefix')) corpo.roomPrefix = v('roomPrefix');
+        if (!corpo.webhookUrl) delete corpo.webhookUrl;
+        api('POST', '/clients', corpo).then(function (r) {
+          aviso('Cliente criado');
+          abrirDetalhe(r.slug);
+          setTimeout(function () {
+            mostrarSegredos($('detalhe').children[1], 'Credenciais de ' + r.name, [['API key (x-api-key)', r.apiKey], ['Segredo do webhook', r.webhookSecret]]);
+          }, 0);
+        }).catch(function (e) { aviso(erroMsg(e), true); });
+      } else {
+        corpo.minutesPrompt = v('minutesPrompt') || null;
+        api('PATCH', '/clients/' + encodeURIComponent(c.slug), corpo).then(function () { aviso('Salvo'); })
+          .catch(function (e) { aviso(erroMsg(e), true); });
+      }
+    });
+
+    d.appendChild(h('div', { class: 'card' },
+      h('div', { class: 'row', style: 'justify-content:space-between;margin-bottom:12px' },
+        h('h2', { style: 'margin:0' }, novo ? 'Novo cliente' : c.name, ' ', novo ? null : selo(c.active ? 'ativo' : 'inativo')),
+        novo ? null : h('div', { class: 'row' },
+          h('button', { class: 'b s', onclick: function () {
+            if (!confirm('Gerar nova API key? A atual para de funcionar na hora.')) return;
+            acao('POST', '/clients/' + c.slug + '/rotate-key', null, function (r) { mostrarSegredos(avisos, 'Nova API key de ' + c.name, [['API key', r.apiKey]]); });
+          } }, 'Nova API key'),
+          h('button', { class: 'b s', onclick: function () {
+            if (!confirm('Gerar novo segredo do webhook? O cliente precisa atualizar a validação.')) return;
+            acao('POST', '/clients/' + c.slug + '/rotate-webhook-secret', null, function (r) { mostrarSegredos(avisos, 'Novo segredo do webhook', [['Segredo', r.webhookSecret]]); });
+          } }, 'Novo segredo do webhook'),
+          h('button', { class: 'b s', onclick: function () {
+            acao('POST', '/clients/' + c.slug + '/webhook-test', null, function (r) { aviso(r.delivered ? 'Webhook respondeu ' + r.status : 'Webhook falhou: ' + (r.error || 'HTTP ' + r.status), !r.delivered); });
+          } }, 'Testar webhook'),
+          h('button', { class: 'b s' + (c.active ? ' d' : ''), onclick: function () {
+            if (c.active && !confirm('Desativar ' + c.name + '? A API key para de funcionar.')) return;
+            acao('PATCH', '/clients/' + c.slug, c.active ? 'Cliente desativado' : 'Cliente ativado', function () { abrirDetalhe(c.slug); }, { active: !c.active });
+          } }, c.active ? 'Desativar' : 'Ativar'))),
+      f));
+  }
+
+  function carregarGravacoes(d, c) {
+    var card = h('div', { class: 'card' }, h('h2', null, 'Gravações guardadas'), h('p', { class: 'muted' }, 'Carregando...'));
+    d.appendChild(card);
+    api('GET', '/clients/' + encodeURIComponent(c.slug) + '/recordings?limit=100').then(function (lista) {
+      card.removeChild(card.lastChild);
+      if (!lista.length) { card.appendChild(h('p', { class: 'muted' }, 'Nenhuma gravação guardada.')); return; }
+      var recarregar = function () { d.removeChild(card); carregarGravacoes(d, c); };
+      card.appendChild(h('div', { class: 'scroll' }, h('table', { class: 'larga' },
+        h('tr', null, ['Data', 'Sala', 'Duração', 'Tamanho', 'Webhook', 'Transcrição', 'Apaga em', ''].map(function (x) { return h('th', null, x); })),
+        lista.map(function (g) {
+          var t = g.transcript;
+          return h('tr', null,
+            h('td', { class: 'nw' }, data(g.createdAt)), h('td', null, h('code', null, g.roomName)), h('td', { class: 'nw' }, dur(g.durationSec)), h('td', { class: 'nw' }, mb(g.sizeBytes)),
+            h('td', null, selo(g.webhookStatus), g.webhookAttempts ? h('div', { class: 'small muted' }, g.webhookAttempts + ' tentativa(s)') : null),
+            h('td', null, t ? selo(t.status) : h('span', { class: 'muted' }, '—'), t && t.error ? h('div', { class: 'small muted', title: t.error }, t.error.slice(0, 60)) : null),
+            h('td', { class: 'nw' }, data(g.expiresAt)),
+            h('td', null, h('div', { class: 'row' },
+              h('button', { class: 'b s', onclick: function () {
+                api('GET', '/recordings/' + g.id + '/download').then(function (r) { window.location.href = r.downloadUrl; }).catch(function (e) { aviso(erroMsg(e), true); });
+              } }, 'Baixar'),
+              t && t.status === 'DONE' ? h('button', { class: 'b s', onclick: function () { verAta(g); } }, 'Ata') : null,
+              h('button', { class: 'b s', onclick: function () { acao('POST', '/recordings/' + g.id + '/webhook', 'Webhook reenviado', recarregar); } }, 'Reenviar webhook'),
+              !t || t.status === 'FAILED' || t.status === 'DONE' ? h('button', { class: 'b s', onclick: function () {
+                if (t && t.status === 'DONE' && !confirm('Refazer a transcrição e a ata desta gravação?')) return;
+                acao('POST', '/recordings/' + g.id + '/transcript', 'Transcrição na fila', recarregar);
+              } }, t ? 'Refazer transcrição' : 'Transcrever') : null,
+              h('button', { class: 'b s d', onclick: function () {
+                if (!confirm('Apagar esta gravação, a transcrição e a ata? Não dá para desfazer.')) return;
+                acao('DELETE', '/recordings/' + g.id, 'Gravação apagada', recarregar);
+              } }, 'Apagar'))));
+        }))));
+    }).catch(function (e) { aviso(erroMsg(e), true); });
+  }
+
+  function verAta(g) {
+    api('GET', '/recordings/' + g.id + '/transcript').then(function (t) {
+      $('dlgTitulo').textContent = 'Ata · ' + g.roomName + ' · ' + data(g.createdAt);
+      var corpo = limpar($('dlgCorpo'));
+      corpo.appendChild(h('div', null, t.minutes || '(sem ata: ' + (t.error || 'não gerada') + ')'));
+      if (t.text) corpo.appendChild(h('details', { style: 'margin-top:16px' }, h('summary', null, 'Transcrição completa'), h('div', { class: 'small', style: 'margin-top:8px' }, t.text)));
+      $('dlg').showModal();
+    }).catch(function (e) { aviso(erroMsg(e), true); });
+  }
+  $('dlgFechar').addEventListener('click', function () { $('dlg').close(); });
+
+  if (TOKEN) entrar().catch(function () { sair(); });
+})();
+</script>
+</body>
+</html>

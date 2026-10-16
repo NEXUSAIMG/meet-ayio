@@ -22,12 +22,14 @@ function criarMemoryStore({ seedClientes = [] } = {}) {
     async createClient({
       slug, name, roomPrefix, apiKeyHash, webhookUrl = null, webhookSecret = null, recordingRetentionDays = 30,
       transcriptionEnabled = false, minutesPrompt = null,
+      quotaRecordedMinutes = null, quotaTranscribedMinutes = null, quotaStorageMb = null,
     }) {
       if (clientes.has(slug)) throw duplicado('slug já existe');
       if ([...clientes.values()].some((c) => c.roomPrefix === roomPrefix)) throw duplicado('prefixo já usado');
       const c = {
         id: crypto.randomUUID(), slug, name, roomPrefix, apiKeyHash, webhookUrl, webhookSecret,
         recordingRetentionDays, transcriptionEnabled, minutesPrompt, active: true, createdAt: new Date(),
+        quotaRecordedMinutes, quotaTranscribedMinutes, quotaStorageMb,
       };
       clientes.set(slug, c);
       return copia(c);
@@ -40,6 +42,12 @@ function criarMemoryStore({ seedClientes = [] } = {}) {
       if (!c) return null;
       Object.assign(c, dados);
       return copia(c);
+    },
+    async getClientBySlug(slug) {
+      return copia(clientes.get(slug));
+    },
+    async ping() {
+      return true;
     },
 
     async createSession({ roomName, clientId, title = null }) {
@@ -93,6 +101,17 @@ function criarMemoryStore({ seedClientes = [] } = {}) {
     async listExpiredRecordings(agora, limit = 100) {
       return [...gravacoes.values()].filter((g) => g.status === 'READY' && g.expiresAt <= agora).slice(0, limit).map(copia);
     },
+    // Espaço ocupado agora (gravações ainda guardadas).
+    async storageBytes(clientId) {
+      return [...gravacoes.values()].filter((g) => g.clientId === clientId && g.status === 'READY')
+        .reduce((a, g) => a + Number(g.sizeBytes || 0), 0);
+    },
+    // Monitoramento: gravações (de qualquer cliente) por estado do webhook.
+    async listRecordingsByWebhookStatus(statuses, { since, limit = 50 } = {}) {
+      return [...gravacoes.values()]
+        .filter((g) => g.status === 'READY' && statuses.includes(g.webhookStatus) && (!since || g.createdAt >= since))
+        .sort((a, b) => b.createdAt - a.createdAt).slice(0, limit).map(copia);
+    },
 
     async createTranscript({ recordingId, clientId, language = 'pt' }) {
       if ([...transcricoes.values()].some((t) => t.recordingId === recordingId)) throw duplicado('transcrição já existe');
@@ -120,6 +139,23 @@ function criarMemoryStore({ seedClientes = [] } = {}) {
     },
     async deleteTranscriptByRecording(recordingId) {
       for (const [id, t] of transcricoes) if (t.recordingId === recordingId) transcricoes.delete(id);
+    },
+    // Monitoramento da fila: contagem por estado e a pendência mais antiga.
+    async transcriptStats() {
+      const byStatus = { PENDING: 0, PROCESSING: 0, DONE: 0, FAILED: 0 };
+      let oldestPendingAt = null;
+      for (const t of transcricoes.values()) {
+        byStatus[t.status] = (byStatus[t.status] || 0) + 1;
+        if ((t.status === 'PENDING' || t.status === 'PROCESSING') && (!oldestPendingAt || t.createdAt < oldestPendingAt)) {
+          oldestPendingAt = t.createdAt;
+        }
+      }
+      return { byStatus, oldestPendingAt };
+    },
+    async listFailedTranscripts({ since, limit = 20 } = {}) {
+      return [...transcricoes.values()]
+        .filter((t) => t.status === 'FAILED' && (!since || t.updatedAt >= since))
+        .sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit).map(copia);
     },
 
     async usage(clientId, de, ate) {

@@ -21,6 +21,11 @@ function criarPrismaStore(prisma) {
       const r = await prisma.client.updateMany({ where: { slug }, data: dados });
       return r.count ? prisma.client.findUnique({ where: { slug } }) : null;
     },
+    getClientBySlug: (slug) => prisma.client.findUnique({ where: { slug } }),
+    async ping() {
+      await prisma.$queryRaw`SELECT 1`;
+      return true;
+    },
 
     createSession: ({ roomName, clientId, title = null }) =>
       prisma.session.create({ data: { roomName, clientId, title } }),
@@ -62,6 +67,15 @@ function criarPrismaStore(prisma) {
       where: { status: 'READY', expiresAt: { lte: agora } },
       take: limit,
     }),
+    async storageBytes(clientId) {
+      const r = await prisma.recording.aggregate({ where: { clientId, status: 'READY' }, _sum: { sizeBytes: true } });
+      return Number(r._sum.sizeBytes || 0);
+    },
+    listRecordingsByWebhookStatus: (statuses, { since, limit = 50 } = {}) => prisma.recording.findMany({
+      where: { status: 'READY', webhookStatus: { in: statuses }, ...(since ? { createdAt: { gte: since } } : {}) },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    }),
 
     async createTranscript({ recordingId, clientId, language = 'pt' }) {
       try {
@@ -79,6 +93,23 @@ function criarPrismaStore(prisma) {
     },
     listTranscriptsByStatus: (statuses) => prisma.transcript.findMany({ where: { status: { in: statuses } }, orderBy: { createdAt: 'asc' } }),
     deleteTranscriptByRecording: (recordingId) => prisma.transcript.deleteMany({ where: { recordingId } }),
+    async transcriptStats() {
+      const [grupos, maisAntiga] = await Promise.all([
+        prisma.transcript.groupBy({ by: ['status'], _count: { _all: true } }),
+        prisma.transcript.findFirst({
+          where: { status: { in: ['PENDING', 'PROCESSING'] } }, orderBy: { createdAt: 'asc' }, select: { createdAt: true },
+        }),
+      ]);
+      const byStatus = { PENDING: 0, PROCESSING: 0, DONE: 0, FAILED: 0 };
+      for (const g of grupos) byStatus[g.status] = g._count._all;
+      return { byStatus, oldestPendingAt: maisAntiga?.createdAt || null };
+    },
+    listFailedTranscripts: ({ since, limit = 20 } = {}) => prisma.transcript.findMany({
+      where: { status: 'FAILED', ...(since ? { updatedAt: { gte: since } } : {}) },
+      orderBy: { updatedAt: 'desc' },
+      take: limit,
+      select: { id: true, recordingId: true, clientId: true, status: true, error: true, attempts: true, createdAt: true, updatedAt: true },
+    }),
 
     async usage(clientId, de, ate) {
       const filtro = { clientId, createdAt: { gte: de, lt: ate } };

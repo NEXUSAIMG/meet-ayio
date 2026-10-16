@@ -36,18 +36,33 @@ async function enviar({ url, segredo, evento, dados, timeoutMs }) {
 }
 
 // Entregas com retentativas em processo.
-function criarNotificador({ store, delaysMs, timeoutMs, agendar = setTimeout }) {
+function criarNotificador({ store, delaysMs, timeoutMs, agendar = setTimeout, maxFalhasGuardadas = 50 }) {
   const pendentes = new Set();
+  // Monitoramento (em memória: zera ao reiniciar; o estado de recording.ready
+  // também fica no banco, em recordings.webhook_status).
+  const contadores = { attempts: 0, delivered: 0, retried: 0, failed: 0 };
+  const falhas = []; // últimas entregas que desistiram, mais recente primeiro
+  const desde = new Date();
 
   // aoTentar(resultado, { tentativa, ultima }) → false interrompe as próximas tentativas.
   function entregar({ cliente, evento, dados, aoTentar = async () => {} }) {
     if (!cliente.webhookUrl) return false;
     const tentar = async (i) => {
       const r = await enviar({ url: cliente.webhookUrl, segredo: cliente.webhookSecret, evento, dados, timeoutMs });
+      contadores.attempts++;
       const ultima = i + 1 >= delaysMs.length;
       const continuar = await aoTentar(r, { tentativa: i + 1, ultima });
-      if (!r.ok && !ultima && continuar !== false) programar(i + 1);
-      if (!r.ok && ultima) console.warn(`[webhook] ${evento} não entregue a ${cliente.slug} após ${i + 1} tentativas`);
+      if (r.ok) contadores.delivered++;
+      if (!r.ok && !ultima && continuar !== false) { contadores.retried++; programar(i + 1); }
+      if (!r.ok && ultima) {
+        contadores.failed++;
+        falhas.unshift({
+          event: evento, client: cliente.slug, attempts: i + 1, status: r.status, error: r.erro || null,
+          recordingId: dados?.id || dados?.recordingId || null, at: new Date().toISOString(),
+        });
+        falhas.length = Math.min(falhas.length, maxFalhasGuardadas);
+        console.warn(`[webhook] ${evento} não entregue a ${cliente.slug} após ${i + 1} tentativas`);
+      }
     };
     const programar = (i) => {
       const p = new Promise((resolve) => {
@@ -83,7 +98,11 @@ function criarNotificador({ store, delaysMs, timeoutMs, agendar = setTimeout }) 
     while (pendentes.size) await Promise.all([...pendentes]);
   }
 
-  return { entregar, notificarGravacao, aguardar, enviar: (opts) => enviar({ timeoutMs, ...opts }) };
+  const estatisticas = () => ({
+    since: desde.toISOString(), inFlight: pendentes.size, ...contadores, recentFailures: falhas.map((f) => ({ ...f })),
+  });
+
+  return { entregar, notificarGravacao, aguardar, estatisticas, enviar: (opts) => enviar({ timeoutMs, ...opts }) };
 }
 
 module.exports = { assinar, verificarAssinatura, criarNotificador };

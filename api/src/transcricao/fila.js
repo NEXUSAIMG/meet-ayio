@@ -23,6 +23,7 @@ function criarFilaTranscricao({ cfg, store, storage, midia, transcritor, redator
   let cadeia = Promise.resolve();
   const emAndamento = new Set();
   const naFila = new Set();
+  let atual = null; // { id, desde } — monitoramento
 
   function enfileirar(id, atrasoMs = 0) {
     if (naFila.has(id)) return;
@@ -30,9 +31,9 @@ function criarFilaTranscricao({ cfg, store, storage, midia, transcritor, redator
     const p = new Promise((resolve) => {
       agendar(() => {
         cadeia = cadeia
-          .then(() => { naFila.delete(id); return processar(id); }) // libera para uma retentativa reagendar
+          .then(() => { naFila.delete(id); atual = { id, desde: new Date() }; return processar(id); }) // libera para uma retentativa reagendar
           .catch((e) => console.error('[transcricao]', e))
-          .finally(resolve);
+          .finally(() => { atual = null; resolve(); });
       }, atrasoMs);
     });
     emAndamento.add(p);
@@ -150,7 +151,21 @@ function criarFilaTranscricao({ cfg, store, storage, midia, transcritor, redator
     await cadeia;
   }
 
-  return { enfileirar, retomar, regerarAta, aguardar };
+  // Recusa sem processar (ex.: quota do mês atingida) e avisa o cliente.
+  async function falhar(id, erro) {
+    const t = await store.updateTranscript(id, { status: 'FAILED', error: String(erro).slice(0, 500) });
+    const gravacao = t && await store.getRecording(t.recordingId);
+    if (t) await avisar('transcript.failed', t, gravacao);
+    return t;
+  }
+
+  // Monitoramento: o que está na memória do processo agora.
+  const estado = () => ({
+    waiting: naFila.size,
+    processing: atual ? { transcriptId: atual.id, forSec: Math.round((Date.now() - atual.desde) / 1000) } : null,
+  });
+
+  return { enfileirar, retomar, regerarAta, aguardar, falhar, estado };
 }
 
 module.exports = { criarFilaTranscricao, transcricaoPublica };

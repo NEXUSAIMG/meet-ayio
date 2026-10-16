@@ -59,6 +59,28 @@ test('prismaStore: contrato completo contra MySQL', { skip: !url && 'sem TEST_DA
     await store.updateTranscript(tr.id, { status: 'DONE', text: textoLongo, segments: segs, durationSec: 150, minutes: 'RASCUNHO', minutesModel: 'm' });
     const lida = await store.getTranscriptByRecording(g1.id);
     assert.deepStrictEqual([lida.text.length, lida.segments, lida.minutes], [textoLongo.length, segs, 'RASCUNHO']);
+
+    // monitoramento e quotas
+    assert.strictEqual(await store.ping(), true);
+    assert.strictEqual(await store.storageBytes(c.id), 5_000_000_000, 'só gravações READY');
+    await store.updateRecording(g1.id, { webhookStatus: 'FAILED' });
+    assert.deepStrictEqual((await store.listRecordingsByWebhookStatus(['FAILED'])).map((g) => g.id), [g1.id]);
+    assert.strictEqual((await store.listRecordingsByWebhookStatus(['FAILED'], { since: new Date(Date.now() + 60_000) })).length, 0);
+    const g3 = await store.createRecording({ clientId: c.id, roomName: 'sc-sala-3', storageKey: 'k3', sizeBytes: 10, expiresAt: futuro });
+    const tr3 = await store.createTranscript({ recordingId: g3.id, clientId: c.id });
+    let st = await store.transcriptStats();
+    assert.deepStrictEqual(st.byStatus, { PENDING: 1, PROCESSING: 0, DONE: 1, FAILED: 0 });
+    assert.ok(st.oldestPendingAt instanceof Date);
+    await store.updateTranscript(tr3.id, { status: 'FAILED', error: 'quota' });
+    st = await store.transcriptStats();
+    assert.strictEqual(st.oldestPendingAt, null);
+    assert.deepStrictEqual((await store.listFailedTranscripts({ since: new Date(Date.now() - 60_000) })).map((t) => [t.id, t.error]), [[tr3.id, 'quota']]);
+    await store.deleteTranscriptByRecording(g3.id);
+    await store.updateRecording(g3.id, { status: 'DELETED' });
+    const q = await store.updateClient('seucartorio', { quotaRecordedMinutes: 600, quotaStorageMb: null, quotaTranscribedMinutes: 0 });
+    assert.deepStrictEqual([q.quotaRecordedMinutes, q.quotaStorageMb, q.quotaTranscribedMinutes], [600, null, 0]);
+    assert.strictEqual((await store.getClientBySlug('seucartorio')).id, c.id);
+    assert.strictEqual(await store.getClientBySlug('nao-existe'), null);
     assert.deepStrictEqual((await store.listTranscriptsByStatus(['DONE'])).map((t) => t.id), [tr.id]);
     assert.strictEqual((await store.listTranscriptsByStatus(['PENDING', 'PROCESSING'])).length, 0);
 
@@ -68,11 +90,11 @@ test('prismaStore: contrato completo contra MySQL', { skip: !url && 'sem TEST_DA
     assert.strictEqual(await store.getTranscriptByRecording(g1.id), null);
     assert.deepStrictEqual(
       { s: u.sessions, t: u.tokens, m: u.moderatorTokens, g: u.recordings, min: u.recordedMinutes, b: u.recordedBytes, meses: u.byMonth.length },
-      { s: 2, t: 2, m: 1, g: 2, min: 11, b: 5_000_001_000, meses: 1 }
+      { s: 2, t: 2, m: 1, g: 3, min: 11, b: 5_000_001_010, meses: 1 }
     );
     assert.deepStrictEqual(
       { s: u.byMonth[0].sessions, t: u.byMonth[0].tokens, g: u.byMonth[0].recordings },
-      { s: 2, t: 2, g: 2 }
+      { s: 2, t: 2, g: 3 }
     );
 
     const atualizado = await store.updateClient('seucartorio', { active: false, recordingRetentionDays: 90 });

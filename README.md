@@ -11,14 +11,14 @@ produtos Ayio. Primeiro cliente: SeuCartório (sai do 8x8 JaaS).
 | `integracoes/seucartorio/` | troca JaaS → Meet Ayio e gravações, prontas para aplicar no SeuCartório |
 | `docs/` | plano e decisões |
 
-## API (v0.4)
+## API (v0.5)
 
 **Clientes** autenticam com `x-api-key`. Cada cliente tem um prefixo de sala
 (ex.: `sc-`) e só emite token para salas com esse prefixo.
 
 | Método | Rota | O que faz |
 |---|---|---|
-| POST | `/api/v1/tokens` | `{ room, user: { id, name, email }, moderator, features? }` → `{ token, roomName, domain, scriptUrl, expiresIn, joinUrl }` |
+| POST | `/api/v1/tokens` | `{ room, user: { id, name, email }, moderator, features? }` → `{ token, roomName, domain, scriptUrl, expiresIn, joinUrl, recording: { allowed, reason? } }` |
 | POST | `/api/v1/sessions` | `{ prefix?, title? }` → sala com nome não adivinhável |
 | POST | `/api/v1/sessions/:room/token` | igual a `/tokens`, sala na URL |
 | GET | `/api/v1/recordings?room=` | gravações disponíveis |
@@ -29,20 +29,37 @@ produtos Ayio. Primeiro cliente: SeuCartório (sai do 8x8 JaaS).
 | POST | `/api/v1/recordings/:id/transcript` | pede (ou refaz com `?force=1`) transcrição + ata |
 | POST | `/api/v1/recordings/:id/minutes` | refaz só a ata: `{ participants?, instructions?, title? }` (síncrono) |
 | POST | `/api/v1/webhooks/test` | manda um `ping` para o webhook do cliente |
-| GET | `/api/v1/usage?from=&to=` | sessões, tokens, gravações, minutos/bytes gravados, minutos transcritos |
+| GET | `/api/v1/usage?from=&to=` | sessões, tokens, gravações, minutos/bytes gravados, minutos transcritos + `quota` do mês |
 
 Moderador recebe token com `features.recording = true` (botão "Gravar" no
 Jitsi); participante não. Gravar começa e para **dentro da chamada**.
 
-**Admin** (`Authorization: Bearer $ADMIN_TOKEN`):
+**Painel de administração:** `https://<api>/admin/painel` (pede o
+`ADMIN_TOKEN`). Saúde (fila de transcrição, webhooks que falharam, banco),
+clientes com uso do mês e quotas, cadastro/edição de cliente, troca de
+chaves, e as gravações de cada cliente (baixar, ver ata, reenviar webhook,
+refazer transcrição, apagar).
+
+**Admin** (`Authorization: Bearer $ADMIN_TOKEN`) — o que o painel usa:
 
 | Método | Rota | O que faz |
 |---|---|---|
-| POST | `/admin/clients` | `{ slug, name, roomPrefix, webhookUrl?, recordingRetentionDays? }` → devolve `apiKey` e `webhookSecret` **uma única vez** |
-| GET | `/admin/clients` | lista (sem segredos) |
+| GET | `/admin/health` | saúde completa (`ok` / `degraded` / `down`, com a lista de problemas) |
+| POST | `/admin/clients` | `{ slug, name, roomPrefix, webhookUrl?, recordingRetentionDays?, transcriptionEnabled?, quota*? }` → devolve `apiKey` e `webhookSecret` **uma única vez** |
+| GET | `/admin/clients` · `/admin/clients/:slug` | lista / detalhe (sem segredos) |
 | POST | `/admin/clients/:slug/rotate-key` | nova API key; a antiga para na hora |
 | POST | `/admin/clients/:slug/rotate-webhook-secret` | novo segredo de webhook |
-| PATCH | `/admin/clients/:slug` | `{ active, name, webhookUrl, recordingRetentionDays, transcriptionEnabled, minutesPrompt }` |
+| POST | `/admin/clients/:slug/webhook-test` | `ping` no webhook do cliente |
+| PATCH | `/admin/clients/:slug` | `{ active, name, webhookUrl, recordingRetentionDays, transcriptionEnabled, minutesPrompt, quotaRecordedMinutes, quotaTranscribedMinutes, quotaStorageMb }` |
+| GET | `/admin/usage?month=AAAA-MM` | uso de todos os clientes no mês (+ quotas no mês corrente) |
+| GET | `/admin/clients/:slug/recordings` | gravações com estado do webhook e da transcrição |
+| GET | `/admin/recordings/:id/download` · `/transcript` | link de download / transcrição e ata |
+| POST | `/admin/recordings/:id/webhook` · `/transcript` | reenvia `recording.ready` / (re)transcreve (passa por cima da quota) |
+| DELETE | `/admin/recordings/:id` | apaga gravação, transcrição e ata |
+
+**Saúde para monitor externo:** `GET /health` (processo vivo, usado pelo
+Railway) e `GET /health/ready` (banco responde; 503 se não). Sem detalhes —
+o relatório fica em `/admin/health`.
 
 **Interno** (`Authorization: Bearer $RECORDER_SECRET`): `PUT /internal/recordings?room=&durationSec=`
 com o mp4 no corpo — usado pelo `infra/jibri/finalize.sh`.
@@ -69,6 +86,22 @@ ATA (gerado por IA — revisar)". O cliente pode trocar só o formato
 `/minutes`. Falha da IA não perde a transcrição; a fila sobrevive a reinício
 (`PENDING`/`PROCESSING` são retomadas).
 
+### Quotas
+
+Opcionais por cliente; **sem limite por padrão** (`null`). Mês = mês UTC.
+
+- `quotaRecordedMinutes`: minutos gravados no mês. Atingiu → o token do
+  moderador sai **sem** o botão de gravar (`recording.allowed = false`,
+  `reason: "quota_excedida"`); ele continua moderador.
+- `quotaStorageMb`: espaço ocupado pelas gravações guardadas. Mesmo efeito.
+- `quotaTranscribedMinutes`: minutos transcritos no mês. Atingiu → gravação
+  nova é aceita, mas a transcrição falha na hora (`transcript.failed`, erro
+  "quota mensal de transcrição atingida") e `POST .../transcript` devolve 429.
+
+São limites "macios": o que já começou termina (uma gravação longa pode
+passar do limite). O admin pode subir/zerar a quota a qualquer momento e
+forçar uma transcrição pelo painel.
+
 ### Retenção
 
 Cada gravação expira em `recordingRetentionDays` (padrão 30). Um job de hora
@@ -78,8 +111,8 @@ avisa o cliente com `recording.deleted` (para ele apagar as cópias).
 ## Rodando
 
 ```bash
-cd api
-cp .env.example .env     # sem DATABASE_URL usa memória + MEET_AYIO_SEED_CLIENTS
+node scripts/gerar-segredos.js   # cria api/.env, infra/jibri/.env e .env (fora do git)
+cd api                   # sem DATABASE_URL usa memória + MEET_AYIO_SEED_CLIENTS
 npm install
 npm test                 # unitários (+ integração se TEST_DATABASE_URL)
 npm start

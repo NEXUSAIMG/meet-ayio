@@ -24,6 +24,11 @@ model Client {
   transcriptionEnabled   Boolean      @default(false) @map("transcription_enabled")
   // Instruções próprias do cliente para a ata (substituem o modelo padrão).
   minutesPrompt          String?      @map("minutes_prompt") @db.Text
+  // Quotas mensais (mês UTC). null = sem limite (padrão).
+  quotaRecordedMinutes   Int?         @map("quota_recorded_minutes")
+  quotaTranscribedMinutes Int?        @map("quota_transcribed_minutes")
+  // Espaço ocupado pelas gravações guardadas (não é mensal).
+  quotaStorageMb         Int?         @map("quota_storage_mb")
   createdAt              DateTime     @default(now()) @map("created_at")
   sessions               Session[]
   tokens                 TokenIssue[]
@@ -81,6 +86,7 @@ model Recording {
 
   @@index([clientId, createdAt])
   @@index([status, expiresAt])
+  @@index([webhookStatus, createdAt])
   @@map("recordings")
 }
 

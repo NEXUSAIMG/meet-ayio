@@ -8,6 +8,16 @@ function criarApp(deps) {
   const app = express();
   app.disable('x-powered-by');
   app.get('/health', (_req, res) => res.json({ ok: true }));
+  // Para monitor externo (UptimeRobot etc.): só diz se o banco responde, sem detalhes.
+  // O relatório completo fica em GET /admin/health (com ADMIN_TOKEN).
+  app.get('/health/ready', async (_req, res) => {
+    try {
+      await deps.store.ping();
+      res.json({ ok: true });
+    } catch {
+      res.status(503).json({ ok: false });
+    }
+  });
 
   // Upload do Jibri vem em stream (sem parser JSON).
   app.use('/internal', rotasInternas(deps));

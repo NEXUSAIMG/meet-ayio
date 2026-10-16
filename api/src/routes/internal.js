@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const express = require('express');
 const { igualSeguro } = require('../apiKeys');
 const { assinc, gravacaoPublica } = require('./comum');
+const { situacaoQuotas, temLimite } = require('../quotas');
 
 const SALA_VALIDA = /^[a-z0-9][a-z0-9-]{3,63}$/;
 
@@ -42,12 +43,20 @@ function rotasInternas({ cfg, store, storage, notificador, fila }) {
       expiresAt: new Date(Date.now() + dias * 24 * 60 * 60 * 1000),
     });
     await notificador.notificarGravacao(g, cliente, gravacaoPublica(g));
-    let transcricao = null;
+    let transcricao = 'OFF';
     if (cliente.transcriptionEnabled && fila) {
-      transcricao = await store.createTranscript({ recordingId: g.id, clientId: cliente.id, language: cfg.transcribe.language });
-      fila.enfileirar(transcricao.id);
+      const t = await store.createTranscript({ recordingId: g.id, clientId: cliente.id, language: cfg.transcribe.language });
+      // A gravação nunca é recusada (já foi feita); só a transcrição respeita a quota.
+      const q = temLimite(cliente) ? await situacaoQuotas(store, cliente) : null;
+      if (q && !q.transcriptionAllowed) {
+        await fila.falhar(t.id, `quota mensal de transcrição atingida (${q.limits.transcribedMinutes} min)`);
+        transcricao = 'QUOTA_EXCEEDED';
+      } else {
+        fila.enfileirar(t.id);
+        transcricao = 'PENDING';
+      }
     }
-    res.status(201).json({ id: g.id, sizeBytes, transcription: transcricao ? 'PENDING' : 'OFF' });
+    res.status(201).json({ id: g.id, sizeBytes, transcription: transcricao });
   }));
 
   return r;

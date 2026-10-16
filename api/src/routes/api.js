@@ -5,6 +5,7 @@ const { hashKey } = require('../apiKeys');
 const { assinc, gravacaoPublica, nomeArquivo } = require('./comum');
 const { apagarGravacao } = require('../retention');
 const { transcricaoPublica } = require('../transcricao/fila');
+const { situacaoQuotas, temLimite } = require('../quotas');
 
 const SALA_VALIDA = /^[a-z0-9][a-z0-9-]{3,63}$/;
 
@@ -38,12 +39,22 @@ function rotasApi({ cfg, store, storage, notificador, fila }) {
     const { user, moderator, features } = req.body || {};
     if (!user?.name) return res.status(400).json({ error: 'user.name_obrigatorio' });
     // Moderador pode gravar por padrão (botão "Gravar" no Jitsi); cliente pode desligar.
-    const podeGravar = Boolean(moderator) && features?.recording !== false;
+    // Quota do mês atingida (minutos gravados ou espaço): o botão some.
+    let podeGravar = Boolean(moderator) && features?.recording !== false;
+    let recording = { allowed: podeGravar };
+    if (podeGravar && temLimite(req.cliente)) {
+      const q = await situacaoQuotas(store, req.cliente);
+      if (!q.recordingAllowed) {
+        podeGravar = false;
+        recording = { allowed: false, reason: 'quota_excedida', exceeded: q.exceeded };
+      }
+    }
     const token = gerarTokenJitsi(cfg, { room, user, moderator, features: { recording: podeGravar } });
     await store.recordToken({ clientId: req.cliente.id, roomName: room, moderator, userName: String(user.name).trim().slice(0, 120) });
     res.json({
       token, roomName: room, expiresIn: cfg.tokenTtlSeconds, ...infoJitsi(),
       joinUrl: urlSala(room) ? `${urlSala(room)}?jwt=${token}` : null,
+      recording,
     });
   }
 
@@ -110,6 +121,10 @@ function rotasApi({ cfg, store, storage, notificador, fila }) {
     let t = await store.getTranscriptByRecording(g.id);
     if (t && (t.status === 'PENDING' || t.status === 'PROCESSING')) return res.status(202).json(transcricaoPublica(t, g));
     if (t && t.status === 'DONE' && req.query.force !== '1') return res.status(409).json({ error: 'ja_transcrita', hint: 'use ?force=1 para refazer' });
+    if (temLimite(req.cliente)) {
+      const q = await situacaoQuotas(store, req.cliente);
+      if (!q.transcriptionAllowed) return res.status(429).json({ error: 'quota_excedida', quota: q });
+    }
     t = t
       ? await store.updateTranscript(t.id, { status: 'PENDING', attempts: 0, error: null, text: null, segments: null, minutes: null, minutesModel: null })
       : await store.createTranscript({ recordingId: g.id, clientId: req.cliente.id, language: cfg.transcribe.language });
@@ -164,7 +179,10 @@ function rotasApi({ cfg, store, storage, notificador, fila }) {
     const de = req.query.from ? new Date(req.query.from) : new Date(Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth(), 1));
     const ate = req.query.to ? new Date(req.query.to) : new Date(Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth() + 1, 1));
     if (isNaN(de) || isNaN(ate) || de >= ate) return res.status(400).json({ error: 'periodo_invalido' });
-    res.json({ client: req.cliente.slug, from: de.toISOString(), to: ate.toISOString(), ...(await store.usage(req.cliente.id, de, ate)) });
+    const uso = await store.usage(req.cliente.id, de, ate);
+    // Quotas (mês corrente; null = sem limite)
+    const quota = await situacaoQuotas(store, req.cliente, { uso: req.query.from || req.query.to ? undefined : uso });
+    res.json({ client: req.cliente.slug, from: de.toISOString(), to: ate.toISOString(), ...uso, quota });
   }));
 
   return r;
