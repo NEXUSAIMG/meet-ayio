@@ -15,4 +15,6 @@ COPY scripts ./scripts
 
 ENV NODE_ENV=production
 EXPOSE 3000
-CMD ["node", "src/server.js"]
+# Aplica as migrações pendentes antes de subir (idempotente; não depende do
+# preDeployCommand do Railway, que não roda em deploys feitos com "railway up").
+CMD ["sh", "-c", "npx prisma migrate deploy && exec node src/server.js"]

@@ -33,7 +33,9 @@ nos scripts da imagem).
 - **prosody:** JWT (`AUTH_TYPE=jwt`, `JWT_APP_ID/ISSUERS/AUDIENCES=meet-ayio`,
   sem convidado sem token), módulo `token_affiliation` (moderador vem do
   token: `context.user.moderator`/`affiliation`), TURN por TCP.
-- **jicofo:** `ENABLE_AUTO_OWNER=0` (quem entra primeiro não vira moderador),
+- **jicofo:** `ENABLE_AUTO_OWNER=0` (quem entra primeiro não vira moderador) e
+  `JICOFO_ENABLE_AUTH=0` (com ela ligada o jicofo promove todo usuário com
+  token a moderador; quem exige o token para entrar é o prosody),
   brewery do jvb e do Jibri, heap 384 MB.
 - **jvb:** STUN desligado, candidatos privados ligados, heap 1792 MB.
 - **web:** HTTP na 8000 (TLS fica na borda do Railway), interface em
@@ -68,14 +70,14 @@ JIBRI_RECORDER_PASSWORD=${{shared.JIBRI_RECORDER_PASSWORD}}
 
 **jicofo**
 ```
-XMPP_SERVER=${{prosody.RAILWAY_PRIVATE_DOMAIN}}
+XMPP_SERVER=prosody.railway.internal
 JICOFO_AUTH_PASSWORD=${{shared.JICOFO_AUTH_PASSWORD}}
 ENABLE_RECORDING=1
 ```
 
 **jvb**
 ```
-XMPP_SERVER=${{prosody.RAILWAY_PRIVATE_DOMAIN}}
+XMPP_SERVER=prosody.railway.internal
 JVB_AUTH_PASSWORD=${{shared.JVB_AUTH_PASSWORD}}
 ```
 
@@ -83,14 +85,14 @@ JVB_AUTH_PASSWORD=${{shared.JVB_AUTH_PASSWORD}}
 ```
 PORT=8000
 PUBLIC_URL=https://${{RAILWAY_PUBLIC_DOMAIN}}
-XMPP_BOSH_URL_BASE=http://${{prosody.RAILWAY_PRIVATE_DOMAIN}}:5280
+XMPP_BOSH_URL_BASE=http://prosody.railway.internal:5280
 ENABLE_RECORDING=1
 ```
 
 **coturn**
 ```
 TURN_SECRET=${{shared.TURN_SECRET}}
-JVB_HOST=${{jvb.RAILWAY_PRIVATE_DOMAIN}}
+JVB_HOST=jvb.railway.internal
 ```
 E em Settings → Networking do coturn: **TCP Proxy → porta 3478**.
 

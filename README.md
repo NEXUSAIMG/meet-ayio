@@ -127,8 +127,10 @@ Smoke contra uma API no ar: `API_URL=... ADMIN_TOKEN=... npm run smoke`
 
 Novo serviço a partir deste repo, Root Directory = `api`, mais um MySQL do
 Railway (`DATABASE_URL=${{MySQL.MYSQL_URL}}`). O build usa o `Dockerfile`
-(Node 22 + ffmpeg); o `railway.json` roda `prisma migrate deploy` antes de cada
-deploy e usa `/health` como healthcheck.
+(Node 22 + ffmpeg), que roda `prisma migrate deploy` ao iniciar (o
+`preDeployCommand` do Railway não roda em deploys por `railway up`); o
+`railway.json` usa `/health` como healthcheck. Defina `PORT=3000` (o domínio
+aponta para a 3000; sem isso o Railway injeta outra porta).
 Gravações: volume montado em `/data` (`RECORDINGS_DIR=/data/recordings`) ou
 Railway Bucket (`S3_*`).
 
