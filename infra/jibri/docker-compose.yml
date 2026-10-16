@@ -1,25 +1,29 @@
-# Jibri do Meet Ayio numa VPS (plano B da fase 6).
-# O Jibri entra nas salas pelo XMPP do prosody (Railway, via TCP proxy) e pela
-# URL pública do web; grava e o finalize.sh envia o mp4 para a meet-ayio-api.
+# Jibri do Meet Ayio numa VPS. Baseado no jibri.yml oficial do
+# docker-jitsi-meet (tag stable-11248), conferido em 16/10/2026:
+# - audio por PulseAudio dentro do container: NAO precisa de snd-aloop,
+#   /dev/snd nem SYS_ADMIN (eram exigencias de versoes antigas);
+# - /dev/shm de pelo menos 2 GB (o container aborta no boot se for menor);
+# - gravacoes e logs em /storage; configuracao gerada em /config.
 #
-#   cp .env.example .env   # preencher
-#   sudo modprobe snd-aloop && echo snd-aloop | sudo tee -a /etc/modules
+#   cp .env.example .env            # preencher
+#   mkdir -p config storage && sudo chown 1000:1000 config storage   # usuario s6 da imagem
 #   docker compose up -d --build
+#   docker logs -f jibri            # esperar entrar no MUC jibribrewery
 services:
   jibri:
     build: .
     container_name: jibri
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /run:size=256M,mode=1750,exec
+      - /tmp:size=256M,mode=1777,noexec
     shm_size: 2gb
-    cap_add:
-      - SYS_ADMIN
-    devices:
-      - /dev/snd:/dev/snd
     volumes:
-      - ./recordings:/config/recordings
+      - ./config:/config
+      - ./storage:/storage
     env_file: .env
     environment:
       - DISPLAY=:0
-      - JIBRI_RECORDING_DIR=/config/recordings
+      - JIBRI_RECORDING_DIR=/storage/recordings
       - JIBRI_FINALIZE_RECORDING_SCRIPT_PATH=/opt/meet-ayio/finalize.sh
-      - XMPP_TRUST_ALL_CERTS=1
