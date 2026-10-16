@@ -1,0 +1,25 @@
+# Jibri do Meet Ayio numa VPS (plano B da fase 6).
+# O Jibri entra nas salas pelo XMPP do prosody (Railway, via TCP proxy) e pela
+# URL pública do web; grava e o finalize.sh envia o mp4 para a meet-ayio-api.
+#
+#   cp .env.example .env   # preencher
+#   sudo modprobe snd-aloop && echo snd-aloop | sudo tee -a /etc/modules
+#   docker compose up -d --build
+services:
+  jibri:
+    build: .
+    container_name: jibri
+    restart: unless-stopped
+    shm_size: 2gb
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/snd:/dev/snd
+    volumes:
+      - ./recordings:/config/recordings
+    env_file: .env
+    environment:
+      - DISPLAY=:0
+      - JIBRI_RECORDING_DIR=/config/recordings
+      - JIBRI_FINALIZE_RECORDING_SCRIPT_PATH=/opt/meet-ayio/finalize.sh
+      - XMPP_TRUST_ALL_CERTS=1

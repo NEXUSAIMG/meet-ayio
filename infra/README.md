@@ -53,3 +53,9 @@ ativar o módulo de afiliação por token no prosody.
 
 Ver a seção Troubleshooting do `UPSTREAM-README.md` (OOM do jvb, senha XMPP
 divergente, proxy TCP do coturn ausente).
+
+## Gravação (Jibri)
+
+Ver `jibri/README.md`: ligar `ENABLE_RECORDING=1` e as credenciais do Jibri
+em prosody/jicofo/web, abrir um TCP proxy para o 5222 do prosody e subir o
+Jibri numa VPS com o `docker-compose.yml` desta pasta.

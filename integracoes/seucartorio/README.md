@@ -78,3 +78,91 @@ Voltar para o 8x8: `VIDEO_PROVIDER=jaas` (as variáveis `JAAS_*` continuam lá).
   igual no self-hosted.
 - Moderador vem do token (`context.user.moderator`) — conferir no teste da
   fase 2/3 se o prosody está respeitando (ver `infra/README.md`).
+
+---
+
+# Gravações (fases 6–7)
+
+Também pronto para aplicar, depois que o Jibri estiver no ar.
+
+## O que o SeuCartório ganha
+
+- Moderador vê o botão **Iniciar gravação** na chamada (o token de moderador
+  já vem com permissão de gravar; para desligar numa sessão, passar
+  `features: { recording: false }` na chamada de token).
+- Quando a gravação termina, o Meet Ayio chama
+  `POST /api/webhooks/meet-ayio` com o evento `recording.ready`, assinado.
+- O painel lista as gravações da sessão, gera link de download (15 min) e
+  permite apagar antes do prazo (pedido do titular).
+- Apagamento automático após a retenção do cliente (padrão 30 dias,
+  configurável por cliente no Meet Ayio).
+
+## Passo 1 — model (backend/prisma/schema.prisma)
+
+Mesmo padrão do schema (sem relação Prisma, `sessionId` como String):
+
+```prisma
+model VideoGravacao {
+  id           String    @id @default(uuid())
+  gravacaoId   String    @unique @map("gravacao_id")   // id no Meet Ayio
+  sessionId    String    @map("session_id")
+  empresaId    String?   @map("empresa_id")
+  tamanhoBytes BigInt    @default(0) @map("tamanho_bytes")
+  duracaoSeg   Int?      @map("duracao_seg")
+  expiraEm     DateTime? @map("expira_em")
+  apagadaEm    DateTime? @map("apagada_em")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([sessionId])
+  @@map("video_gravacoes")
+}
+```
+
+O arquivo de vídeo **não** fica no SeuCartório: só o id; o download é gerado
+na hora pelo Meet Ayio.
+
+## Passo 2 — rotas
+
+1. Copiar `videoGravacao.routes.js` para `backend/src/routes/`.
+   (`videoProvider.service.js` já tem `obterGravacao`, `apagarGravacao` e
+   `verificarWebhook`.)
+2. No `server.js`, **antes** do `express.json()` global (o webhook precisa do
+   corpo cru para conferir a assinatura) e antes do `video.routes`:
+
+```js
+const videoGravacao = require('./routes/videoGravacao.routes');
+app.use('/api/webhooks/meet-ayio', videoGravacao.webhook);
+app.use('/api/video-sessions', videoGravacao.gravacoes);
+```
+
+Rotas novas:
+
+| Método | Rota | Quem |
+|---|---|---|
+| POST | `/api/webhooks/meet-ayio` | Meet Ayio (assinatura HMAC) |
+| GET | `/api/video-sessions/:id/gravacoes` | quem gerencia a sessão |
+| GET | `/api/video-sessions/gravacoes/:gravacaoId/download` | idem → `{ url }` |
+| DELETE | `/api/video-sessions/gravacoes/:gravacaoId` | idem |
+
+## Passo 3 — variáveis
+
+```
+MEET_AYIO_WEBHOOK_SECRET=whsec_...   # devolvido no cadastro do cliente
+```
+
+E no Meet Ayio, apontar o webhook do cliente:
+
+```bash
+curl -X PATCH https://<meet-ayio-api>/admin/clients/seucartorio \
+  -H "authorization: Bearer $ADMIN_TOKEN" -H "content-type: application/json" \
+  -d '{"webhookUrl":"https://<backend-seucartorio>/api/webhooks/meet-ayio"}'
+# testar: POST /api/v1/webhooks/test com a API key do SeuCartório → { delivered: true }
+```
+
+## Comportamento do webhook
+
+- Resposta 2xx = entregue. 5xx/timeout = o Meet Ayio tenta de novo (na hora,
+  30 s, 5 min, 30 min). Sala desconhecida responde 2xx (não adianta repetir).
+- O mesmo evento pode chegar mais de uma vez → a rota usa `upsert` por
+  `gravacaoId`.
+- Assinatura recusada se tiver mais de 5 minutos (proteção contra replay).

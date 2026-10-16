@@ -79,4 +79,36 @@ async function gerarSala({ user, room, moderator }) {
   };
 }
 
-module.exports = { PROVEDOR, configurado, gerarSala };
+// ---------- Gravacoes (so Meet Ayio) ----------
+async function chamarMeetAyio(metodo, caminho) {
+  const r = await fetch(`${MA_URL}/api/v1${caminho}`, {
+    method: metodo,
+    headers: { 'x-api-key': MA_KEY },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`Meet Ayio respondeu ${r.status}`);
+  return r.status === 204 ? true : r.json();
+}
+
+// { id, roomName, sizeBytes, durationSec, createdAt, expiresAt, downloadUrl (15 min) } | null
+const obterGravacao = (id) => chamarMeetAyio('GET', `/recordings/${encodeURIComponent(id)}`);
+const listarGravacoes = (room) => chamarMeetAyio('GET', `/recordings?room=${encodeURIComponent(room)}`);
+// Exclusao antecipada (pedido do titular, LGPD). true | null (nao existe)
+const apagarGravacao = (id) => chamarMeetAyio('DELETE', `/recordings/${encodeURIComponent(id)}`);
+
+// Valida o header x-meetayio-signature ("t=<unix>,v1=<hmac>") com o corpo CRU da requisicao.
+function verificarWebhook(corpoCru, header, segredo = process.env.MEET_AYIO_WEBHOOK_SECRET, toleranciaSeg = 300) {
+  const crypto = require('crypto');
+  if (!segredo) return false;
+  const partes = Object.fromEntries(String(header || '').split(',').map((p) => p.split('=')));
+  const t = Number(partes.t);
+  if (!t || !partes.v1 || Math.abs(Date.now() / 1000 - t) > toleranciaSeg) return false;
+  const esperado = crypto.createHmac('sha256', segredo).update(`${t}.${corpoCru}`).digest('hex');
+  return partes.v1.length === esperado.length && crypto.timingSafeEqual(Buffer.from(partes.v1), Buffer.from(esperado));
+}
+
+module.exports = {
+  PROVEDOR, configurado, gerarSala,
+  obterGravacao, listarGravacoes, apagarGravacao, verificarWebhook,
+};

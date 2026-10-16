@@ -10,16 +10,20 @@ datasource db {
 
 // Cliente da API (SeuCartório, BotAyio...). Só o hash da API key fica salvo.
 model Client {
-  id         String       @id @default(uuid())
-  slug       String       @unique
-  name       String
-  roomPrefix String       @unique @map("room_prefix")
-  apiKeyHash String       @unique @map("api_key_hash") @db.Char(64)
-  active     Boolean      @default(true)
-  webhookUrl String?      @map("webhook_url") @db.VarChar(500)
-  createdAt  DateTime     @default(now()) @map("created_at")
-  sessions   Session[]
-  tokens     TokenIssue[]
+  id                     String       @id @default(uuid())
+  slug                   String       @unique
+  name                   String
+  roomPrefix             String       @unique @map("room_prefix")
+  apiKeyHash             String       @unique @map("api_key_hash") @db.Char(64)
+  active                 Boolean      @default(true)
+  webhookUrl             String?      @map("webhook_url") @db.VarChar(500)
+  // Segredo HMAC dos webhooks (o cliente precisa dele para validar a assinatura).
+  webhookSecret          String?      @map("webhook_secret") @db.VarChar(80)
+  recordingRetentionDays Int          @default(30) @map("recording_retention_days")
+  createdAt              DateTime     @default(now()) @map("created_at")
+  sessions               Session[]
+  tokens                 TokenIssue[]
+  recordings             Recording[]
 
   @@map("clients")
 }
@@ -48,4 +52,26 @@ model TokenIssue {
 
   @@index([clientId, createdAt])
   @@map("token_issues")
+}
+
+// Gravação feita pelo Jibri e enviada pelo script de finalização.
+model Recording {
+  id              String    @id @default(uuid())
+  clientId        String    @map("client_id")
+  client          Client    @relation(fields: [clientId], references: [id])
+  roomName        String    @map("room_name") @db.VarChar(64)
+  storageKey      String    @map("storage_key") @db.VarChar(300)
+  contentType     String    @default("video/mp4") @map("content_type") @db.VarChar(60)
+  sizeBytes       BigInt    @default(0) @map("size_bytes")
+  durationSec     Int?      @map("duration_sec")
+  status          String    @default("READY") @db.VarChar(20) // READY | DELETED
+  webhookStatus   String    @default("NONE") @map("webhook_status") @db.VarChar(20) // NONE | PENDING | DELIVERED | FAILED
+  webhookAttempts Int       @default(0) @map("webhook_attempts")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  expiresAt       DateTime  @map("expires_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  @@index([clientId, createdAt])
+  @@index([status, expiresAt])
+  @@map("recordings")
 }

@@ -2,6 +2,7 @@
 function criarPrismaStore(prisma) {
   const store = {
     findClientByKeyHash: (hash) => prisma.client.findUnique({ where: { apiKeyHash: hash } }),
+    getClientById: (id) => prisma.client.findUnique({ where: { id } }),
 
     async createClient(dados) {
       try {
@@ -29,23 +30,46 @@ function criarPrismaStore(prisma) {
       await prisma.tokenIssue.create({ data: { clientId, roomName, moderator: Boolean(moderator) } });
     },
 
+    createRecording: (dados) => prisma.recording.create({ data: { ...dados, sizeBytes: BigInt(dados.sizeBytes || 0) } }),
+    getRecording: (id) => prisma.recording.findUnique({ where: { id } }),
+    listRecordings: (clientId, { roomName, limit = 50 } = {}) => prisma.recording.findMany({
+      where: { clientId, status: 'READY', ...(roomName ? { roomName } : {}) },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    }),
+    async updateRecording(id, dados) {
+      const r = await prisma.recording.updateMany({ where: { id }, data: dados });
+      return r.count ? prisma.recording.findUnique({ where: { id } }) : null;
+    },
+    listExpiredRecordings: (agora, limit = 100) => prisma.recording.findMany({
+      where: { status: 'READY', expiresAt: { lte: agora } },
+      take: limit,
+    }),
+
     async usage(clientId, de, ate) {
       const filtro = { clientId, createdAt: { gte: de, lt: ate } };
-      const [sessions, tokens, moderatorTokens, sMes, tMes] = await Promise.all([
+      const [sessions, tokens, moderatorTokens, grav, sMes, tMes, gMes] = await Promise.all([
         prisma.session.count({ where: filtro }),
         prisma.tokenIssue.count({ where: filtro }),
         prisma.tokenIssue.count({ where: { ...filtro, moderator: true } }),
+        prisma.recording.aggregate({ where: filtro, _count: { _all: true }, _sum: { durationSec: true, sizeBytes: true } }),
         prisma.$queryRaw`SELECT DATE_FORMAT(created_at, '%Y-%m') AS m, COUNT(*) AS n FROM sessions
           WHERE client_id = ${clientId} AND created_at >= ${de} AND created_at < ${ate} GROUP BY m`,
         prisma.$queryRaw`SELECT DATE_FORMAT(created_at, '%Y-%m') AS m, COUNT(*) AS n FROM token_issues
           WHERE client_id = ${clientId} AND created_at >= ${de} AND created_at < ${ate} GROUP BY m`,
+        prisma.$queryRaw`SELECT DATE_FORMAT(created_at, '%Y-%m') AS m, COUNT(*) AS n FROM recordings
+          WHERE client_id = ${clientId} AND created_at >= ${de} AND created_at < ${ate} GROUP BY m`,
       ]);
       const porMes = new Map();
-      const linha = (m) => porMes.get(m) || porMes.set(m, { month: m, sessions: 0, tokens: 0 }).get(m);
+      const linha = (m) => porMes.get(m) || porMes.set(m, { month: m, sessions: 0, tokens: 0, recordings: 0 }).get(m);
       sMes.forEach((r) => { linha(r.m).sessions = Number(r.n); });
       tMes.forEach((r) => { linha(r.m).tokens = Number(r.n); });
+      gMes.forEach((r) => { linha(r.m).recordings = Number(r.n); });
       return {
         sessions, tokens, moderatorTokens,
+        recordings: grav._count._all,
+        recordedMinutes: Math.round(Number(grav._sum.durationSec || 0) / 60),
+        recordedBytes: Number(grav._sum.sizeBytes || 0),
         byMonth: [...porMes.values()].sort((a, b) => a.month.localeCompare(b.month)),
       };
     },

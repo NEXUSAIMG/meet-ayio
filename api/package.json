@@ -1,6 +1,6 @@
 {
   "name": "meet-ayio-api",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "API do Meet Ayio: emite JWT para o Jitsi self-hosted, cadastra clientes e mede uso",
   "main": "src/server.js",
@@ -17,6 +17,9 @@
     "smoke": "node scripts/smoke.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1152.0",
+    "@aws-sdk/lib-storage": "^3.1152.0",
+    "@aws-sdk/s3-request-presigner": "^3.1152.0",
     "@prisma/client": "^6.19.3",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",

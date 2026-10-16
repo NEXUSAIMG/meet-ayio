@@ -11,13 +11,18 @@ test('prismaStore: contrato completo contra MySQL', { skip: !url && 'sem TEST_DA
   const { criarPrismaStore } = require('../src/stores/prismaStore');
   const prisma = new PrismaClient({ datasources: { db: { url } } });
   try {
+    await prisma.recording.deleteMany();
     await prisma.tokenIssue.deleteMany();
     await prisma.session.deleteMany();
     await prisma.client.deleteMany();
     const store = criarPrismaStore(prisma);
 
-    const c = await store.createClient({ slug: 'seucartorio', name: 'SeuCartório', roomPrefix: 'sc-', apiKeyHash: 'a'.repeat(64) });
+    const c = await store.createClient({
+      slug: 'seucartorio', name: 'SeuCartório', roomPrefix: 'sc-', apiKeyHash: 'a'.repeat(64),
+      webhookSecret: 'whsec_x', recordingRetentionDays: 30,
+    });
     assert.strictEqual((await store.findClientByKeyHash('a'.repeat(64))).slug, 'seucartorio');
+    assert.strictEqual((await store.getClientById(c.id)).webhookSecret, 'whsec_x');
     await assert.rejects(
       store.createClient({ slug: 'seucartorio', name: 'x', roomPrefix: 'xx-', apiKeyHash: 'b'.repeat(64) }),
       (e) => e.code === 'DUPLICADO'
@@ -28,15 +33,30 @@ test('prismaStore: contrato completo contra MySQL', { skip: !url && 'sem TEST_DA
     await store.createSession({ roomName: 'sc-sala-2', clientId: c.id, title: 'Atendimento' });
     assert.strictEqual((await store.getSession('sc-sala-1')).clientId, c.id);
 
+    // gravações
+    const futuro = new Date(Date.now() + 86400000);
+    const g1 = await store.createRecording({ clientId: c.id, roomName: 'sc-sala-1', storageKey: 'k1', sizeBytes: 5_000_000_000, durationSec: 600, expiresAt: futuro });
+    const g2 = await store.createRecording({ clientId: c.id, roomName: 'sc-sala-2', storageKey: 'k2', sizeBytes: 1000, durationSec: 60, expiresAt: new Date(Date.now() - 1000) });
+    assert.strictEqual(Number((await store.getRecording(g1.id)).sizeBytes), 5_000_000_000, 'BigInt > 4 GB');
+    assert.deepStrictEqual((await store.listRecordings(c.id, { roomName: 'sc-sala-1' })).map((g) => g.id), [g1.id]);
+    assert.deepStrictEqual((await store.listExpiredRecordings(new Date())).map((g) => g.id), [g2.id]);
+    await store.updateRecording(g2.id, { status: 'DELETED', deletedAt: new Date(), webhookStatus: 'DELIVERED', webhookAttempts: 2 });
+    assert.strictEqual((await store.listExpiredRecordings(new Date())).length, 0);
+    assert.strictEqual((await store.listRecordings(c.id)).length, 1);
+    assert.strictEqual(await store.updateRecording('nao-existe', { status: 'DELETED' }), null);
+
     const u = await store.usage(c.id, new Date(Date.now() - 86400000), new Date(Date.now() + 86400000));
     assert.deepStrictEqual(
-      { sessions: u.sessions, tokens: u.tokens, moderatorTokens: u.moderatorTokens, meses: u.byMonth.length },
-      { sessions: 2, tokens: 2, moderatorTokens: 1, meses: 1 }
+      { s: u.sessions, t: u.tokens, m: u.moderatorTokens, g: u.recordings, min: u.recordedMinutes, b: u.recordedBytes, meses: u.byMonth.length },
+      { s: 2, t: 2, m: 1, g: 2, min: 11, b: 5_000_001_000, meses: 1 }
     );
-    assert.deepStrictEqual({ s: u.byMonth[0].sessions, t: u.byMonth[0].tokens }, { s: 2, t: 2 });
+    assert.deepStrictEqual(
+      { s: u.byMonth[0].sessions, t: u.byMonth[0].tokens, g: u.byMonth[0].recordings },
+      { s: 2, t: 2, g: 2 }
+    );
 
-    const atualizado = await store.updateClient('seucartorio', { active: false });
-    assert.strictEqual(atualizado.active, false);
+    const atualizado = await store.updateClient('seucartorio', { active: false, recordingRetentionDays: 90 });
+    assert.deepStrictEqual([atualizado.active, atualizado.recordingRetentionDays], [false, 90]);
     assert.strictEqual(await store.updateClient('nao-existe', { active: false }), null);
     assert.strictEqual((await store.listClients()).length, 1);
   } finally {
